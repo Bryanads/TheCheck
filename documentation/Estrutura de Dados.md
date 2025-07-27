@@ -91,7 +91,33 @@ Armazena as preferências detalhadas de cada usuário para condições de surf *
 | `consideracoes_adicionais` | TEXT                                         | Notas ou observações adicionais do usuário sobre as preferências desta praia.  |
 | `ultima_atualizacao`       | TIMESTAMP WITH TIME ZONE DEFAULT NOW()       | O timestamp da última atualização desta preferência.                           |
 
-## 6\. Tabela `avaliacoes_surf`
+---
+
+## 6\. Tabela `preferencias_nivel_praia`
+
+Esta tabela armazenará os presets de "condições ideais" para cada nível de surf em cada praia, preenchidos manualmente ou através de dados agregados iniciais.
+
+| Nome da Coluna             | Tipo de Dados                                | Descrição                                                                      |
+| :------------------------- | :------------------------------------------- | :----------------------------------------------------------------------------- |
+| `id_preferencia_nivel`     | SERIAL PRIMARY KEY                           | Identificador único para cada registro de preferência por nível.               |
+| `nivel_surf`               | VARCHAR(50) NOT NULL                         | O nível de surf para o qual esta preferência é definida (ex: "Iniciante", "Intermediário"). |
+| `id_praia`                 | INTEGER NOT NULL REFERENCES praias(id_praia) | Chave estrangeira para a tabela `praias`.                                      |
+| `altura_onda_min`          | NUMERIC(5, 2)                                | Altura mínima de onda preferida para este nível nesta praia.                   |
+| `altura_onda_max`          | NUMERIC(5, 2)                                | Altura máxima de onda preferida para este nível nesta praia.                   |
+| `direcao_swell_preferida`  | VARCHAR(50)                                  | Direção(ões) de swell preferida(s) para este nível nesta praia.                |
+| `periodo_swell_min`        | NUMERIC(5, 2)                                | Período mínimo de swell preferido para este nível nesta praia.                 |
+| `periodo_swell_max`        | NUMERIC(5, 2)                                | Período máximo de swell preferido para este nível nesta praia.                 |
+| `vento_direcao_preferida`  | VARCHAR(50)                                  | Direção(ões) de vento preferida(s) para este nível nesta praia.                |
+| `vento_velocidade_max`     | NUMERIC(5, 2)                                | Velocidade máxima de vento tolerada para este nível nesta praia.               |
+| `mare_ideal_tipo`          | VARCHAR(20)                                  | Tipo de maré ideal (ex: 'high', 'low', 'mid', 'rising', 'falling').           |
+| `consideracoes_adicionais` | TEXT                                         | Notas ou observações adicionais sobre as preferências deste nível nesta praia. |
+| `ultima_atualizacao`       | TIMESTAMP WITH TIME ZONE DEFAULT NOW()       | O timestamp da última atualização desta preferência.                           |
+| **Índice Único** | `UNIQUE (nivel_surf, id_praia)`              | Garante que só haja um conjunto de preferências por nível por praia.           |
+
+---
+
+
+## 7\. Tabela `avaliacoes_surf`
 
 Armazena o feedback dos usuários sobre a qualidade do surf em um determinado dia/hora para uma praia específica, crucial para o treinamento do modelo de recomendação.
 
@@ -108,7 +134,8 @@ Armazena o feedback dos usuários sobre a qualidade do surf em um determinado di
 
 ## SQL Schema (PostgreSQL)
 
-```sql
+```
+sql
 -- Criação da Tabela praias
 CREATE TABLE praias (
     id_praia SERIAL PRIMARY KEY,
@@ -193,6 +220,26 @@ CREATE TABLE preferencias_usuario_praia (
     ultima_atualizacao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (id_usuario, id_praia) -- Garante que um usuário só tenha uma preferência por praia
 );
+
+-- Criação da Tabela preferencias_nivel_praia
+CREATE TABLE preferencias_nivel_praia (
+    id_preferencia_nivel BIGSERIAL PRIMARY KEY,
+    nivel_surf VARCHAR(50) NOT NULL,
+    id_praia INTEGER NOT NULL REFERENCES praias(id_praia),
+    altura_onda_min NUMERIC(5, 2),
+    altura_onda_max NUMERIC(5, 2),
+    direcao_swell_preferida VARCHAR(50),
+    periodo_swell_min NUMERIC(5, 2),
+    periodo_swell_max NUMERIC(5, 2),
+    vento_direcao_preferida VARCHAR(50),
+    vento_velocidade_max NUMERIC(5, 2),
+    mare_ideal_tipo VARCHAR(20),
+    consideracoes_adicionais TEXT,
+    ultima_atualizacao TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (nivel_surf, id_praia)
+);
+
+CREATE INDEX idx_preferencias_nivel_praia_nivel_id_praia ON preferencias_nivel_praia (nivel_surf, id_praia);
 
 -- Criação da Tabela avaliacoes_surf
 CREATE TABLE avaliacoes_surf (
