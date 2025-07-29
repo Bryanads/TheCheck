@@ -12,7 +12,7 @@ from db_utils import get_db_connection, close_db_connection
 load_dotenv()
 
 # --- Global Configurations ---
-API_KEY = os.getenv('API_KEY_1') 
+API_KEY = os.getenv('API_KEY_2') 
 
 OUTPUT_DIR = 'data'
 
@@ -343,7 +343,8 @@ if __name__ == "__main__":
         if isinstance(obj, decimal.Decimal):
             return float(obj)
         raise TypeError
-
+    
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     with open(os.path.join(OUTPUT_DIR, 'current_spot.json'), 'w') as f:
         json.dump(selected_spot, f, ensure_ascii=False, indent=4, default=decimal_default)
 

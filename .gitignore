@@ -1,2 +1,4 @@
 .venv
 .env
+data/
+# Ignore data/ directory because its only used for local cache storage

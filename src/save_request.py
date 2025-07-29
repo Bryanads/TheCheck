@@ -2,6 +2,7 @@ import json
 import os
 import arrow
 import sys
+import datetime
 from psycopg2 import sql
 from dotenv import load_dotenv
 from db_utils import get_db_connection, close_db_connection
@@ -90,6 +91,8 @@ def insert_forecast(cursor, spot_id, forecast_data):
         sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
         for col in cols_to_update
     ]
+    update_set_parts.append(sql.SQL("collection_timestamp = NOW()"))
+
     update_set = sql.SQL(", ").join(update_set_parts)
 
     insert_query = sql.SQL("""
@@ -106,8 +109,7 @@ def insert_forecast(cursor, spot_id, forecast_data):
     print(f"Starting insertion/update of {len(forecast_data)} hourly forecasts...")
     for entry in forecast_data:
         # Convert timestamp string to datetime object (UTC timezone from StormGlass)
-        timestamp_utc = arrow.get(entry['time']).to('utc').datetime
-
+        timestamp_utc = arrow.get(entry['time']).to('utc').datetime.replace(tzinfo=datetime.timezone.utc)
         values_to_insert = (
             spot_id,
             timestamp_utc,
@@ -150,7 +152,8 @@ def insert_extreme_tides(cursor, spot_id, extremes_data):
         VALUES (%s, %s, %s, %s)
         ON CONFLICT (spot_id, timestamp_utc) DO UPDATE SET
             tide_type = EXCLUDED.tide_type,
-            height = EXCLUDED.height;
+            height = EXCLUDED.height,
+            collection_timestamp = NOW();
     """)
     print(f"Starting insertion/update of {len(extremes_data)} tide extremes...")
     for extreme in extremes_data:
