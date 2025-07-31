@@ -1,0 +1,1 @@
+# Rota para gerar recomendações

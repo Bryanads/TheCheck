@@ -1,0 +1,33 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        
+        {
+            "name": "Python: add_spot (Module)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.add_spot", // Isso simula 'python -m src.add_spot'
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}" // Garante que o diretório de trabalho é a raiz do seu projeto
+        },
+        {
+            "name": "Python: make_request (Module)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.forecast.make_request",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: save_request (Module)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.forecast.save_request",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

@@ -5,7 +5,7 @@ import os
 from dotenv import load_dotenv
 import sys
 import decimal
-from db_utils import get_db_connection, close_db_connection
+from exemples.db_utils import get_db_connection, close_db_connection
 
 
 # Load environment variables from .env file
