@@ -16,4 +16,10 @@
 ### 📋 Tarefas
 
 - [ ] Revisar o `calculate_suitability_score` de ponta a ponta.
-- [ ] Melhorar o `main.py`
+- [ ] Discutir lógica do `main.py`, ou seja, como inputador dados para o `calculate_suitability_score`.
+    - Receber hora como parâmetro?
+    - Passar uma previsão e ele só devolver o score?
+    - Passar todo o banco de dados e ele devolver uma lista dos melhores?
+        - A lista pode ser composta com horas sequências de um mesmo dia?
+    - Criar uma avaliação do score?
+        - Necessitaria criar uma nova tabela?
