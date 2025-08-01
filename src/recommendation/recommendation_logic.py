@@ -20,6 +20,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     # Definindo pesos e penalidades para maior controle
     WEIGHT_MAJOR = 30
     WEIGHT_MINOR = 15
+    WEIGHT_TERTIARY = 10
     PENALTY_CRITICAL = 50 # Penalidade para condições que tornam o surfe impossível/perigoso
     PENALTY_HIGH = 20
     PENALTY_MEDIUM = 10
@@ -34,38 +35,55 @@ def calculate_suitability_score(forecast_entry, preferences):
         val = preferences.get(key)
         return float(val) if val is not None else None
 
-    # Função auxiliar para pontuar proximidade ao ideal
-    # (Adicionei flexibilidade para bônus/penalidades customizadas por chamada)
-    def score_proximity_to_ideal(current_value, min_val, max_val, ideal_val,
+    # NOVO: Função auxiliar para pontuar quando apenas o "ideal" é fornecido
+    def score_proximity_to_single_ideal(current_value, ideal_val,
+                                        ideal_bonus=BONUS_GOOD, medium_penalty=PENALTY_LOW, high_penalty=PENALTY_MEDIUM):
+        if current_value is None or ideal_val is None:
+            return 0
+        current_value = float(current_value)
+        ideal_val = float(ideal_val)
+
+        # Dentro de uma margem aceitável do ideal (ex: +/- 10%)
+        if ideal_val * 0.9 <= current_value <= ideal_val * 1.1:
+            return ideal_bonus
+        # Um pouco mais longe (ex: +/- 20%)
+        elif ideal_val * 0.8 <= current_value <= ideal_val * 1.2:
+            return -medium_penalty
+        # Muito longe
+        else:
+            return -high_penalty
+
+
+    # Função auxiliar para pontuar proximidade ao ideal (min, max, ideal)
+    def score_proximity_to_range_ideal(current_value, min_val, max_val, ideal_val,
                                  ideal_bonus=BONUS_IDEAL, good_bonus=BONUS_GOOD,
-                                 high_penalty=PENALTY_HIGH, medium_penalty=PENALTY_MEDIUM):
+                                 high_penalty=PENALTY_HIGH, medium_penalty=PENALTY_MEDIUM, very_low_penalty=PENALTY_VERY_LOW):
         if current_value is None:
             return 0
 
-        current_value = float(current_value) # Garante que o valor da previsão é float
+        current_value = float(current_value)
 
-        # Se há um ideal definido
+        # Prioriza o ideal_val se definido
         if ideal_val is not None:
             ideal_val = float(ideal_val)
-            # Verifica se está MUITO próximo do ideal
+            # Se MUITO próximo do ideal
             if ideal_val * 0.9 <= current_value <= ideal_val * 1.1:
                 return ideal_bonus
-            # Verifica se está dentro da faixa MIN/MAX (se definida)
+            # Se dentro da faixa aceitável min/max (se existirem e forem válidos)
             elif min_val is not None and max_val is not None and float(min_val) <= current_value <= float(max_val):
                 return good_bonus
-            # Verifica se está MUITO fora da faixa (com margem de erro)
-            elif (min_val is not None and current_value < float(min_val) * 0.8) or \
-                 (max_val is not None and current_value > float(max_val) * 1.2):
-                return -high_penalty
-            # Verifica se está fora da faixa MIN/MAX, mas não muito
+            # Fora da faixa min/max, mas não muito
             elif (min_val is not None and current_value < float(min_val)) or \
                  (max_val is not None and current_value > float(max_val)):
                 return -medium_penalty
-            else: # Se não há min/max mas há ideal, e está longe dele
-                # Penaliza se estiver muito longe do ideal e sem faixa definida
-                if current_value < ideal_val * 0.8 or current_value > ideal_val * 1.2:
-                    return -medium_penalty
-        # Se não há ideal, mas há min/max
+            # Muito fora da faixa min/max ou muito longe do ideal (se min/max não definidos)
+            elif (min_val is not None and current_value < float(min_val) * 0.8) or \
+                 (max_val is not None and current_value > float(max_val) * 1.2) or \
+                 (min_val is None and max_val is None and (current_value < ideal_val * 0.8 or current_value > ideal_val * 1.2)):
+                return -high_penalty
+            else: # Está fora do ideal, mas não atinge nenhuma penalidade severa
+                return -very_low_penalty
+        # Se NÃO há ideal, mas há min/max
         elif min_val is not None and max_val is not None:
             min_val = float(min_val)
             max_val = float(max_val)
@@ -90,7 +108,13 @@ def calculate_suitability_score(forecast_entry, preferences):
     min_wh = get_pref_float('min_wave_height')
     max_wh = get_pref_float('max_wave_height')
     ideal_wh = get_pref_float('ideal_wave_height')
-    score += score_proximity_to_ideal(wave_height, min_wh, max_wh, ideal_wh)
+    score += score_proximity_to_range_ideal(wave_height, min_wh, max_wh, ideal_wh, ideal_bonus=WEIGHT_MAJOR, good_bonus=BONUS_GOOD, high_penalty=PENALTY_CRITICAL)
+
+    # Preferências de período da onda - AGORA COM MIN/MAX/IDEAL
+    min_wp = get_pref_float('min_wave_period')
+    max_wp = get_pref_float('max_wave_period')
+    ideal_wp = get_pref_float('ideal_wave_period')
+    score += score_proximity_to_range_ideal(wave_period, min_wp, max_wp, ideal_wp, ideal_bonus=BONUS_GOOD, high_penalty=PENALTY_HIGH)
 
     # Preferências de direção da onda
     preferred_wave_directions_str = preferences.get('preferred_wave_direction')
@@ -111,7 +135,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     min_sh = get_pref_float('min_swell_height')
     max_sh = get_pref_float('max_swell_height')
     ideal_sh = get_pref_float('ideal_swell_height')
-    score += score_proximity_to_ideal(swell_height, min_sh, max_sh, ideal_sh)
+    score += score_proximity_to_range_ideal(swell_height, min_sh, max_sh, ideal_sh, ideal_bonus=WEIGHT_MAJOR, high_penalty=PENALTY_CRITICAL)
 
     # Preferências de direção do swell
     preferred_swell_directions_str = preferences.get('preferred_swell_direction')
@@ -127,21 +151,16 @@ def calculate_suitability_score(forecast_entry, preferences):
     min_sp = get_pref_float('min_swell_period')
     max_sp = get_pref_float('max_swell_period')
     ideal_sp = get_pref_float('ideal_swell_period')
-    score += score_proximity_to_ideal(swell_period, min_sp, max_sp, ideal_sp)
+    score += score_proximity_to_range_ideal(swell_period, min_sp, max_sp, ideal_sp, ideal_bonus=BONUS_IDEAL, high_penalty=PENALTY_HIGH)
 
     # --- 3. Swell Secundário (secondarySwellHeight_sg, secondarySwellDirection_sg, secondarySwellPeriod_sg) ---
     secondary_swell_height = forecast_entry.get('secondarySwellHeight_sg')
     secondary_swell_direction = forecast_entry.get('secondarySwellDirection_sg')
     secondary_swell_period = forecast_entry.get('secondarySwellPeriod_sg')
 
-    # Preferências de altura do swell secundário (geralmente menos impactante, mas pode ajudar ou atrapalhar)
-    min_ssh = get_pref_float('min_secondary_swell_height')
-    max_ssh = get_pref_float('max_secondary_swell_height')
-    if secondary_swell_height is not None:
-        score += score_proximity_to_ideal(secondary_swell_height, min_ssh, max_ssh, None, # Sem ideal específico, só min/max
-                                         ideal_bonus=0, good_bonus=BONUS_GOOD, # Bônus menor
-                                         high_penalty=PENALTY_LOW, medium_penalty=PENALTY_VERY_LOW)
-
+    # Preferências de altura do swell secundário - AGORA SÓ IDEAL
+    ideal_ssh = get_pref_float('ideal_secondary_swell_height')
+    score += score_proximity_to_single_ideal(secondary_swell_height, ideal_ssh, ideal_bonus=BONUS_VERY_LOW)
 
     # Preferências de direção do swell secundário
     preferred_secondary_swell_directions_str = preferences.get('preferred_secondary_swell_direction')
@@ -153,35 +172,32 @@ def calculate_suitability_score(forecast_entry, preferences):
         else:
             score -= PENALTY_VERY_LOW # Penalidade muito leve
 
-    # Preferências de período do swell secundário (geralmente menos impactante)
-    min_ssp = get_pref_float('min_secondary_swell_period')
-    max_ssp = get_pref_float('max_secondary_swell_period')
-    if secondary_swell_period is not None:
-        score += score_proximity_to_ideal(secondary_swell_period, min_ssp, max_ssp, None,
-                                         ideal_bonus=0, good_bonus=BONUS_VERY_LOW,
-                                         high_penalty=PENALTY_VERY_LOW, medium_penalty=PENALTY_VERY_LOW)
+    # Preferências de período do swell secundário - AGORA SÓ IDEAL
+    ideal_ssp = get_pref_float('ideal_secondary_swell_period')
+    score += score_proximity_to_single_ideal(secondary_swell_period, ideal_ssp, ideal_bonus=BONUS_VERY_LOW)
+
 
     # --- 4. Vento (windSpeed_sg, windDirection_sg) ---
     wind_speed = forecast_entry.get('windSpeed_sg')
     wind_direction = forecast_entry.get('windDirection_sg')
 
+    # Preferências de velocidade do vento - AGORA COM MIN/MAX/IDEAL
+    min_ws = get_pref_float('min_wind_speed')
     max_ws = get_pref_float('max_wind_speed')
     ideal_ws = get_pref_float('ideal_wind_speed')
     # Para vento, geralmente o ideal é baixo, então o min_val pode ser 0 ou muito pequeno
-    score += score_proximity_to_ideal(wind_speed, 0, max_ws, ideal_ws, # Min wind speed is generally 0 or very low
+    score += score_proximity_to_range_ideal(wind_speed, min_ws, max_ws, ideal_ws,
                                      ideal_bonus=WEIGHT_MINOR, good_bonus=BONUS_GOOD,
                                      high_penalty=PENALTY_HIGH, medium_penalty=PENALTY_MEDIUM)
 
     preferred_wind_directions_str = preferences.get('preferred_wind_direction')
-    if wind_speed is not None and preferred_wind_directions_str and max_ws is not None and wind_speed <= max_ws: # Só importa a direção se o vento for aceitável
+    if wind_speed is not None and preferred_wind_directions_str: # Só importa a direção se houver preferência
         preferred_dirs = [d.strip().upper() for d in preferred_wind_directions_str.split(',')]
         current_cardinal_direction = get_cardinal_direction(wind_direction)
         if current_cardinal_direction in preferred_dirs:
             score += WEIGHT_MINOR # Bônus para direção de vento ideal (terral ou fraco lateral)
         else:
             score -= PENALTY_MEDIUM # Penalidade se a direção não for a preferida, mas o vento for aceitável
-    elif wind_speed is not None and max_ws is not None and wind_speed > max_ws: # Se o vento está acima do máximo preferido, penaliza
-        score -= PENALTY_HIGH
 
 
     # --- 5. Maré (current_tide_phase no forecast_entry & sea_level_sg) ---
@@ -194,47 +210,34 @@ def calculate_suitability_score(forecast_entry, preferences):
         else:
             score -= PENALTY_LOW
 
-    # Preferência de Nível do Mar (quantificado)
+    # Preferência de Nível do Mar (quantificado) - AGORA COM MIN/MAX/IDEAL
     sea_level = forecast_entry.get('seaLevel_sg')
     min_sl = get_pref_float('min_sea_level')
     max_sl = get_pref_float('max_sea_level')
     ideal_sl = get_pref_float('ideal_sea_level')
-    score += score_proximity_to_ideal(sea_level, min_sl, max_sl, ideal_sl)
+    score += score_proximity_to_range_ideal(sea_level, min_sl, max_sl, ideal_sl, ideal_bonus=BONUS_GOOD)
 
 
     # --- 6. Temperaturas (water_temperature_sg, air_temperature_sg) ---
     water_temperature = forecast_entry.get('waterTemperature_sg')
     air_temperature = forecast_entry.get('airTemperature_sg')
 
-    # Temperatura da Água
-    min_wt = get_pref_float('min_water_temperature')
-    max_wt = get_pref_float('max_water_temperature')
+    # Temperatura da Água - AGORA SÓ IDEAL
     ideal_wt = get_pref_float('ideal_water_temperature')
-    score += score_proximity_to_ideal(water_temperature, min_wt, max_wt, ideal_wt,
-                                     ideal_bonus=BONUS_GOOD, good_bonus=BONUS_VERY_LOW,
-                                     high_penalty=PENALTY_MEDIUM, medium_penalty=PENALTY_LOW) # Menos peso para temperatura
+    score += score_proximity_to_single_ideal(water_temperature, ideal_wt, ideal_bonus=BONUS_VERY_LOW, medium_penalty=PENALTY_LOW)
 
-    # Temperatura do Ar
-    min_at = get_pref_float('min_air_temperature')
-    max_at = get_pref_float('max_air_temperature')
+    # Temperatura do Ar - AGORA SÓ IDEAL
     ideal_at = get_pref_float('ideal_air_temperature')
-    score += score_proximity_to_ideal(air_temperature, min_at, max_at, ideal_at,
-                                     ideal_bonus=BONUS_GOOD, good_bonus=BONUS_VERY_LOW,
-                                     high_penalty=PENALTY_MEDIUM, medium_penalty=PENALTY_LOW) # Menos peso para temperatura
+    score += score_proximity_to_single_ideal(air_temperature, ideal_at, ideal_bonus=BONUS_VERY_LOW, medium_penalty=PENALTY_LOW)
 
 
     # --- 7. Correntes (current_speed_sg, current_direction_sg) ---
     current_speed = forecast_entry.get('currentSpeed_sg')
     current_direction = forecast_entry.get('currentDirection_sg')
 
-    max_cs = get_pref_float('max_current_speed')
-    if current_speed is not None and max_cs is not None:
-        if current_speed <= max_cs * 0.5: # Corrente fraca é ideal
-            score += BONUS_VERY_LOW
-        elif current_speed <= max_cs: # Corrente aceitável
-            pass # Sem bônus, sem penalidade
-        else: # Corrente acima do máximo preferido
-            score -= PENALTY_LOW # Penalidade leve por corrente forte
+    # Velocidade da Corrente - AGORA SÓ IDEAL
+    ideal_cs = get_pref_float('ideal_current_speed')
+    score += score_proximity_to_single_ideal(current_speed, ideal_cs, ideal_bonus=BONUS_VERY_LOW, medium_penalty=PENALTY_LOW)
 
     preferred_current_directions_str = preferences.get('preferred_current_direction')
     if current_direction is not None and preferred_current_directions_str:

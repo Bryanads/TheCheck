@@ -248,9 +248,9 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
     Args:
         spot_id (int): The ID of the surf spot.
         user_id (int, optional): The ID of the user. If provided, user_spot_preferences
-                                 will be checked first.
+                                    will be checked first.
         surf_level (str, optional): The surf level (e.g., 'Intermediário', 'Maroleiro').
-                                    Used if user_id is None or no user-specific preference exists.
+                                        Used if user_id is None or no user-specific preference exists.
 
     Returns:
         dict: A dictionary of preferences for the spot.
@@ -270,16 +270,16 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
             cur.execute("""
                 SELECT
                     min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    preferred_swell_direction, min_swell_period, max_swell_period, ideal_swell_period,
-                    min_swell_height, max_swell_height, ideal_swell_height,
-                    min_secondary_swell_height, max_secondary_swell_height, preferred_secondary_swell_direction,
-                    min_secondary_swell_period, max_secondary_swell_period,
-                    preferred_wind_direction, max_wind_speed, ideal_wind_speed,
+                    min_wave_period, max_wave_period, ideal_wave_period, -- NOVO
+                    min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
+                    min_swell_period, max_swell_period, ideal_swell_period,
+                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period, -- Mudei aqui
+                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction, -- Mudei aqui
                     ideal_tide_type,
-                    min_water_temperature, max_water_temperature, ideal_water_temperature,
-                    min_air_temperature, max_air_temperature, ideal_air_temperature,
-                    max_current_speed, preferred_current_direction,
-                    min_sea_level, max_sea_level, ideal_sea_level,
+                    min_sea_level, max_sea_level, ideal_sea_level, -- Maré nível, ideal
+                    ideal_water_temperature, -- Mudei aqui
+                    ideal_air_temperature, -- Mudei aqui
+                    ideal_current_speed, preferred_current_direction, -- Mudei aqui
                     additional_considerations
                 FROM user_spot_preferences
                 WHERE user_id = %s AND spot_id = %s;
@@ -291,34 +291,32 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
                     'max_wave_height': user_pref[1],
                     'ideal_wave_height': user_pref[2],
                     'preferred_wave_direction': user_pref[3],
-                    'preferred_swell_direction': user_pref[4],
-                    'min_swell_period': user_pref[5],
-                    'max_swell_period': user_pref[6],
-                    'ideal_swell_period': user_pref[7],
-                    'min_swell_height': user_pref[8],
-                    'max_swell_height': user_pref[9],
-                    'ideal_swell_height': user_pref[10],
-                    'min_secondary_swell_height': user_pref[11],
-                    'max_secondary_swell_height': user_pref[12],
-                    'preferred_secondary_swell_direction': user_pref[13],
-                    'min_secondary_swell_period': user_pref[14],
-                    'max_secondary_swell_period': user_pref[15],
-                    'preferred_wind_direction': user_pref[16],
-                    'max_wind_speed': user_pref[17],
-                    'ideal_wind_speed': user_pref[18],
-                    'ideal_tide_type': user_pref[19],
-                    'min_water_temperature': user_pref[20],
-                    'max_water_temperature': user_pref[21],
-                    'ideal_water_temperature': user_pref[22],
-                    'min_air_temperature': user_pref[23],
-                    'max_air_temperature': user_pref[24],
-                    'ideal_air_temperature': user_pref[25],
-                    'max_current_speed': user_pref[26],
-                    'preferred_current_direction': user_pref[27],
-                    'min_sea_level': user_pref[28],
-                    'max_sea_level': user_pref[29],
-                    'ideal_sea_level': user_pref[30],
-                    'additional_considerations': user_pref[31]
+                    'min_wave_period': user_pref[4], # NOVO
+                    'max_wave_period': user_pref[5], # NOVO
+                    'ideal_wave_period': user_pref[6], # NOVO
+                    'min_swell_height': user_pref[7],
+                    'max_swell_height': user_pref[8],
+                    'ideal_swell_height': user_pref[9],
+                    'preferred_swell_direction': user_pref[10],
+                    'min_swell_period': user_pref[11],
+                    'max_swell_period': user_pref[12],
+                    'ideal_swell_period': user_pref[13],
+                    'ideal_secondary_swell_height': user_pref[14],
+                    'preferred_secondary_swell_direction': user_pref[15],
+                    'ideal_secondary_swell_period': user_pref[16],
+                    'min_wind_speed': user_pref[17], # NOVO
+                    'max_wind_speed': user_pref[18],
+                    'ideal_wind_speed': user_pref[19], # NOVO
+                    'preferred_wind_direction': user_pref[20],
+                    'ideal_tide_type': user_pref[21],
+                    'min_sea_level': user_pref[22], # Maré nível
+                    'max_sea_level': user_pref[23], # Maré nível
+                    'ideal_sea_level': user_pref[24], # Maré nível
+                    'ideal_water_temperature': user_pref[25],
+                    'ideal_air_temperature': user_pref[26],
+                    'ideal_current_speed': user_pref[27],
+                    'preferred_current_direction': user_pref[28],
+                    'additional_considerations': user_pref[29]
                 }
                 print(f"Found user-specific preferences for spot {spot_id} and user {user_id}.")
                 return preferences
@@ -328,16 +326,16 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
             cur.execute("""
                 SELECT
                     min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    preferred_swell_direction, min_swell_period, max_swell_period, ideal_swell_period,
-                    min_swell_height, max_swell_height, ideal_swell_height,
-                    min_secondary_swell_height, max_secondary_swell_height, preferred_secondary_swell_direction,
-                    min_secondary_swell_period, max_secondary_swell_period,
-                    preferred_wind_direction, max_wind_speed, ideal_wind_speed,
+                    min_wave_period, max_wave_period, ideal_wave_period, -- NOVO
+                    min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
+                    min_swell_period, max_swell_period, ideal_swell_period,
+                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period, -- Mudei aqui
+                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction, -- Mudei aqui
                     ideal_tide_type,
-                    min_water_temperature, max_water_temperature, ideal_water_temperature,
-                    min_air_temperature, max_air_temperature, ideal_air_temperature,
-                    max_current_speed, preferred_current_direction,
-                    min_sea_level, max_sea_level, ideal_sea_level,
+                    min_sea_level, max_sea_level, ideal_sea_level, -- Maré nível, ideal
+                    ideal_water_temperature, -- Mudei aqui
+                    ideal_air_temperature, -- Mudei aqui
+                    ideal_current_speed, preferred_current_direction, -- Mudei aqui
                     additional_considerations
                 FROM level_spot_preferences
                 WHERE surf_level = %s AND spot_id = %s;
@@ -349,34 +347,32 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
                     'max_wave_height': level_pref[1],
                     'ideal_wave_height': level_pref[2],
                     'preferred_wave_direction': level_pref[3],
-                    'preferred_swell_direction': level_pref[4],
-                    'min_swell_period': level_pref[5],
-                    'max_swell_period': level_pref[6],
-                    'ideal_swell_period': level_pref[7],
-                    'min_swell_height': level_pref[8],
-                    'max_swell_height': level_pref[9],
-                    'ideal_swell_height': level_pref[10],
-                    'min_secondary_swell_height': level_pref[11],
-                    'max_secondary_swell_height': level_pref[12],
-                    'preferred_secondary_swell_direction': level_pref[13],
-                    'min_secondary_swell_period': level_pref[14],
-                    'max_secondary_swell_period': level_pref[15],
-                    'preferred_wind_direction': level_pref[16],
-                    'max_wind_speed': level_pref[17],
-                    'ideal_wind_speed': level_pref[18],
-                    'ideal_tide_type': level_pref[19],
-                    'min_water_temperature': level_pref[20],
-                    'max_water_temperature': level_pref[21],
-                    'ideal_water_temperature': level_pref[22],
-                    'min_air_temperature': level_pref[23],
-                    'max_air_temperature': level_pref[24],
-                    'ideal_air_temperature': level_pref[25],
-                    'max_current_speed': level_pref[26],
-                    'preferred_current_direction': level_pref[27],
-                    'min_sea_level': level_pref[28],
-                    'max_sea_level': level_pref[29],
-                    'ideal_sea_level': level_pref[30],
-                    'additional_considerations': level_pref[31]
+                    'min_wave_period': level_pref[4], # NOVO
+                    'max_wave_period': level_pref[5], # NOVO
+                    'ideal_wave_period': level_pref[6], # NOVO
+                    'min_swell_height': level_pref[7],
+                    'max_swell_height': level_pref[8],
+                    'ideal_swell_height': level_pref[9],
+                    'preferred_swell_direction': level_pref[10],
+                    'min_swell_period': level_pref[11],
+                    'max_swell_period': level_pref[12],
+                    'ideal_swell_period': level_pref[13],
+                    'ideal_secondary_swell_height': level_pref[14],
+                    'preferred_secondary_swell_direction': level_pref[15],
+                    'ideal_secondary_swell_period': level_pref[16],
+                    'min_wind_speed': level_pref[17], # NOVO
+                    'max_wind_speed': level_pref[18],
+                    'ideal_wind_speed': level_pref[19], # NOVO
+                    'preferred_wind_direction': level_pref[20],
+                    'ideal_tide_type': level_pref[21],
+                    'min_sea_level': level_pref[22], # Maré nível
+                    'max_sea_level': level_pref[23], # Maré nível
+                    'ideal_sea_level': level_pref[24], # Maré nível
+                    'ideal_water_temperature': level_pref[25],
+                    'ideal_air_temperature': level_pref[26],
+                    'ideal_current_speed': level_pref[27],
+                    'preferred_current_direction': level_pref[28],
+                    'additional_considerations': level_pref[29]
                 }
                 print(f"Found level-specific preferences for spot {spot_id} and level '{surf_level}'.")
                 return preferences
