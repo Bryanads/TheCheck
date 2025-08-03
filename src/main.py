@@ -1,4 +1,3 @@
-import datetime
 import sys
 import arrow
 from src.utils.utils import convert_to_localtime_string
@@ -13,7 +12,7 @@ from src.recommendation.data_fetcher import determine_tide_phase, get_cardinal_d
 from src.recommendation.recommendation_logic import calculate_suitability_score
 
 
-def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
+def run_recommendation_for_user_and_spots(user_id, spot_ids_list, start_time_utc, end_time_utc):
     print(f"\n--- Gerando recomendações para o ID de Usuário: {user_id} e Spots: {spot_ids_list} ---")
 
     surf_level = get_user_surf_level(user_id)
@@ -35,9 +34,6 @@ def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
         print(f"Nenhum spot válido encontrado nos IDs fornecidos: {spot_ids_list}. Nenhuma recomendação pode ser feita.")
         return
 
-    start_time_utc = datetime.datetime.now(datetime.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    end_time_utc = start_time_utc + datetime.timedelta(days=1) # Define o período de 24 horas a partir de hoje !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
     recommendations = []
 
     for spot in spots_to_process:
@@ -52,7 +48,10 @@ def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
             print(f"Usando preferências padrão (não específicas) para o spot {spot_name}, pois nenhuma foi encontrada.")
 
         forecast_data = get_forecast_data_for_spot(spot_id, start_time_utc, end_time_utc)
-        tide_extremes = get_tide_extremes_for_spot(spot_id, start_time_utc, end_time_utc)
+
+        day_start = start_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = start_time_utc.replace(hour=23, minute=59, second=59, microsecond=0)
+        tide_extremes = get_tide_extremes_for_spot(spot_id, day_start, day_end)
 
         if not forecast_data:
             print(f"Nenhum dado de previsão disponível para {spot_name} no período especificado.")
@@ -118,13 +117,27 @@ def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Por favor, forneça um ID de usuário seguido por um ou mais IDs de spot.")
-        print("Exemplo: python -m src.main <user_id> <spot_id_1> <spot_id_2> ...")
+    if len(sys.argv) < 6:
+        print("Uso correto: python -m src.main <user_id> <spot_id_1> <spot_id_2> ... <day> <start_time> <end_time>")
+        print("Exemplo: python -m src.main 1 101 102 0 06:00 14:00")
     else:
         try:
             user_id_to_recommend = int(sys.argv[1])
-            spot_ids_to_recommend = [int(arg) for arg in sys.argv[2:]]
-            run_recommendation_for_user_and_spots(user_id_to_recommend, spot_ids_to_recommend)
+            day_offset = int(sys.argv[-3])
+            start_time_str = sys.argv[-2]
+            end_time_str = sys.argv[-1]
+            spot_ids_to_recommend = [int(arg) for arg in sys.argv[2:-3]]
+
+            # Calcular início e fim com base em day_offset + horários
+            base_date = arrow.utcnow().shift(days=day_offset).floor('day')
+            start_hour, start_minute = map(int, start_time_str.split(":"))
+            end_hour, end_minute = map(int, end_time_str.split(":"))
+
+            start_time_utc = base_date.replace(hour=start_hour, minute=start_minute)
+            end_time_utc = base_date.replace(hour=end_hour, minute=end_minute)
+
+            run_recommendation_for_user_and_spots(user_id_to_recommend, spot_ids_to_recommend, start_time_utc.datetime, end_time_utc.datetime)
+
         except ValueError:
-            print("Argumentos inválidos. Certifique-se de que o ID do usuário e os IDs dos spots são numéricos.")
+            print("Erro: certifique-se de que os IDs e horários estão no formato correto.")
+
