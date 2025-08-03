@@ -12,10 +12,12 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 
 # Chaves de API
-API_KEY_STORMGLASS = os.getenv('API_KEY_2')
+API_KEY_STORMGLASS = os.getenv('API_KEY_1')
 
 # Configurações globais para as requisições
 OUTPUT_DIR = 'data' # Diretório onde os JSONs temporários serão salvos
+REQUEST_DIR = os.path.join(OUTPUT_DIR, 'requests') # Diretório para requisições
+TREATED_DIR = os.path.join(OUTPUT_DIR, 'treated') # Diretório para dados tratados
 FORECAST_DAYS = 5 # Quantidade de dias de previsão
 HOURS_FILTER = list(range(5, 18)) # 5 AM to 5 PM (local time)
 
