@@ -1,64 +1,25 @@
-# TheCheck/src/db/queries.py
 import arrow
 import datetime
 from psycopg2 import sql
 from src.db.connection import get_db_connection, close_db_connection
 
-# --- Funções Auxiliares para Padronização de Dados para camelCase ---
 
-def _snake_to_camel_case(snake_str):
-    """Converte uma string snake_case para camelCase e remove '_sg' se presente."""
-    components = snake_str.split('_')
-    # Remove '_sg' do último componente se existir
-    if components and components[-1] == 'sg':
-        components = components[:-1]
-    
-    # Converte para camelCase: primeiro componente em minúsculo, os demais com a primeira letra maiúscula
-    # Garante que mesmo uma string vazia não cause erro
-    if not components:
-        return ""
-    
-    return components[0] + ''.join(x.title() for x in components[1:])
-
-def _fetch_results_as_camel_case_dict(cursor, fetch_method='all'):
+def _fetch_results_as_dict(cursor, fetch_method='all'):
     """
     Busca resultados de um cursor e os formata como uma lista de dicionários (ou um único dicionário),
-    com as chaves em camelCase limpo (sem '_sg').
-
-    Args:
-        cursor: O objeto cursor do psycopg2.
-        fetch_method (str): 'all' para fetchall(), 'one' para fetchone().
+    com as chaves em snake_case.
     """
-    columns = [desc.name for desc in cursor.description] # psycogp2 desc.name é o nome da coluna
-    
+    columns = [desc.name for desc in cursor.description]
+
     if fetch_method == 'one':
         row = cursor.fetchone()
         if not row:
             return None
-        return _format_row_to_camel_case_dict(row, columns)
+        return dict(zip(columns, row))
     elif fetch_method == 'all':
         rows = cursor.fetchall()
-        return [_format_row_to_camel_case_dict(row, columns) for row in rows]
-    return [] # Retorna lista vazia para outros métodos ou se 'all' e não houver linhas
-
-def _format_row_to_camel_case_dict(row, columns):
-    """
-    Formata uma única linha (tupla) em um dicionário com chaves camelCase limpas.
-    """
-    formatted_row = {}
-    for i, value in enumerate(row):
-        original_key = columns[i]
-        
-        # Lógica especial para 'spot_name' da tabela 'spots' (se for o caso)
-        # Se a coluna no DB for 'spot_name', ela se tornará 'spotName'
-        # Se a coluna no DB for 'name', e você quisesse 'spotName', o SELECT precisaria renomear 'name as spot_name'
-        # Assumindo que o DB tem 'spot_name', ela será convertida para 'spotName'
-        # Ou se o DB tem 'name', e você quer 'spotName', o SELECT tem que ser `name AS spot_name`.
-        # No seu schema, a coluna é 'spot_name', então ela será convertida para 'spotName' automaticamente.
-        
-        camel_key = _snake_to_camel_case(original_key)
-        formatted_row[camel_key] = value
-    return formatted_row
+        return [dict(zip(columns, row)) for row in rows]
+    return []
 
 # --- Funções de Escrita de Dados (INSERT/UPDATE) ---
 
@@ -152,6 +113,8 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
     for entry in forecast_data:
         # Convert timestamp string to datetime object (UTC timezone from StormGlass)
         timestamp_utc = arrow.get(entry['time']).to('utc').datetime.replace(tzinfo=datetime.timezone.utc)
+        # As chaves de entrada do 'entry' permanecem em camelCase (vindo da API externa)
+        # mas são mapeadas para as colunas snake_case do banco de dados.
         values_to_insert = (
             spot_id,
             timestamp_utc,
@@ -209,13 +172,12 @@ def insert_extreme_tides_data(cursor, spot_id, extremes_data):
             # Note: For bulk inserts, consider adding failed items to a list and handling transaction rollback for all
     print("Tide extremes insertion/update process finished.")
 
-
 # --- Funções de Leitura de Dados (GET) ---
 
 def get_all_spots():
     """
     Recupera todos os spots de surf do banco de dados.
-    Retorna uma lista de dicionários, cada um representando um spot, com chaves em camelCase.
+    Retorna uma lista de dicionários, cada um representando um spot, com chaves em snake_case.
     """
     conn = None
     cur = None
@@ -225,26 +187,25 @@ def get_all_spots():
             raise Exception("Could not establish database connection.")
         cur = conn.cursor()
 
-        # Inclui a coluna timezone
         cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots ORDER BY spot_id;")
-        
-        spots = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
+
+        spots = _fetch_results_as_dict(cur, fetch_method='all')
 
         if not spots:
             print("No spots found in the database. Please add spots.")
             return []
-        
+
         return spots
     except Exception as e:
         print(f"Error loading spots from the database: {e}")
-        return [] # Retorna lista vazia em caso de erro
+        return []
     finally:
         close_db_connection(conn, cur)
 
 def get_spot_by_id(spot_id):
     """
     Fetches details for a single surf spot by its ID.
-    Returns a dictionary with keys in camelCase.
+    Returns a dictionary with keys in snake_case.
     """
     conn = None
     cur = None
@@ -253,11 +214,10 @@ def get_spot_by_id(spot_id):
         if conn is None:
             return None
         cur = conn.cursor()
-        # Inclui a coluna timezone
         cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots WHERE spot_id = %s;", (spot_id,))
 
-        spot = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
-        
+        spot = _fetch_results_as_dict(cur, fetch_method='one')
+
         if not spot:
             print(f"No spot found with ID {spot_id}.")
         return spot
@@ -280,16 +240,12 @@ def get_user_surf_level(user_id):
         if conn is None:
             return None
         cur = conn.cursor()
-        # Assumindo que a coluna é 'surf_level' na tabela 'users'
         cur.execute("SELECT surf_level FROM users WHERE user_id = %s;", (user_id,))
-        
-        # Como esperamos apenas uma coluna, vamos retornar o valor diretamente
+
         result = cur.fetchone()
-        
+
         if result:
-            # O nome da coluna original é 'surf_level', que se torna 'surfLevel' no dicionário
-            # Mas aqui estamos pegando o valor diretamente da tupla result[0]
-            return result[0] 
+            return result[0]
         else:
             print(f"User with ID {user_id} not found or no surf level set.")
             return None
@@ -306,7 +262,7 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
     user preference is found for the spot.
 
     Returns:
-        dict: A dictionary of preferences for the spot, with keys in camelCase.
+        dict: A dictionary of preferences for the spot, with keys in snake_case.
               Returns None if no preferences are found for the given criteria.
     """
     conn = None
@@ -318,7 +274,7 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
             return None
         cur = conn.cursor()
 
-        # 1. Try to get user-specific preferences first
+        # 1. Tenta obter as preferências específicas do usuário primeiro
         if user_id:
             query = """
                 SELECT
@@ -338,13 +294,13 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
                 WHERE user_id = %s AND spot_id = %s;
             """
             cur.execute(query, (user_id, spot_id))
-            preferences = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
+            preferences = _fetch_results_as_dict(cur, fetch_method='one')
 
             if preferences:
                 print(f"Found user-specific preferences for spot {spot_id} and user {user_id}.")
                 return preferences
 
-        # 2. If no user-specific preferences or no user_id, fall back to surf_level preferences
+        # 2. Se não houver preferências específicas do usuário ou user_id, volta para as preferências de nível de surf
         if surf_level:
             query = """
                 SELECT
@@ -364,12 +320,12 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
                 WHERE surf_level = %s AND spot_id = %s;
             """
             cur.execute(query, (surf_level, spot_id))
-            preferences = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
-            
+            preferences = _fetch_results_as_dict(cur, fetch_method='one')
+
             if preferences:
                 print(f"Found level-specific preferences for spot {spot_id} and level '{surf_level}'.")
                 return preferences
-        
+
         print(f"No preferences found for spot {spot_id} (user: {user_id}, level: {surf_level}).")
         return None
 
@@ -382,7 +338,7 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
 def get_forecasts_from_db(spot_id, start_time_utc, end_time_utc):
     """
     Fetches hourly forecast data for a specific spot within a time range.
-    Returns a list of dictionaries with keys in camelCase.
+    Returns a list of dictionaries with keys in snake_case.
     """
     conn = None
     cur = None
@@ -404,8 +360,8 @@ def get_forecasts_from_db(spot_id, start_time_utc, end_time_utc):
             ORDER BY timestamp_utc;
         """
         cur.execute(query, (spot_id, start_time_utc, end_time_utc))
-        
-        forecasts = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
+
+        forecasts = _fetch_results_as_dict(cur, fetch_method='all')
         return forecasts
     except Exception as e:
         print(f"Error fetching forecast data for spot {spot_id}: {e}")
@@ -416,7 +372,7 @@ def get_forecasts_from_db(spot_id, start_time_utc, end_time_utc):
 def get_tides_forecast_from_db(spot_id, start_time_utc, end_time_utc):
     """
     Fetches tide extremes data for a specific spot within a time range.
-    Returns a list of dictionaries with keys in camelCase.
+    Returns a list of dictionaries with keys in snake_case.
     """
     conn = None
     cur = None
@@ -434,8 +390,8 @@ def get_tides_forecast_from_db(spot_id, start_time_utc, end_time_utc):
             ORDER BY timestamp_utc;
         """
         cur.execute(query, (spot_id, start_time_utc, end_time_utc))
-        
-        tide_extremes = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
+
+        tide_extremes = _fetch_results_as_dict(cur, fetch_method='all')
         return tide_extremes
     except Exception as e:
         print(f"Error fetching tide extremes for spot {spot_id}: {e}")
