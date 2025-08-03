@@ -1,3 +1,4 @@
+# TheCheck/app.py
 import sys
 import os
 
@@ -9,4 +10,8 @@ from src.api import create_app
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Certifique-se que o host e a porta correspondem ao que está no seu frontend JS
+    # '0.0.0.0' permite que a aplicação seja acessível de outras máquinas na rede,
+    # '127.0.0.1' ou 'localhost' restringe ao acesso local.
+    # O frontend está usando 'http://127.0.0.1:5000', então 'host=127.0.0.1' ou '0.0.0.0' é ok.
+    app.run(debug=True, host='127.0.0.1', port=5000)

@@ -1,9 +1,68 @@
+# TheCheck/src/db/queries.py
 import arrow
 import datetime
 from psycopg2 import sql
 from src.db.connection import get_db_connection, close_db_connection
 
-def add_spot_to_db(name, latitude, longitude):
+# --- Funções Auxiliares para Padronização de Dados para camelCase ---
+
+def _snake_to_camel_case(snake_str):
+    """Converte uma string snake_case para camelCase e remove '_sg' se presente."""
+    components = snake_str.split('_')
+    # Remove '_sg' do último componente se existir
+    if components and components[-1] == 'sg':
+        components = components[:-1]
+    
+    # Converte para camelCase: primeiro componente em minúsculo, os demais com a primeira letra maiúscula
+    # Garante que mesmo uma string vazia não cause erro
+    if not components:
+        return ""
+    
+    return components[0] + ''.join(x.title() for x in components[1:])
+
+def _fetch_results_as_camel_case_dict(cursor, fetch_method='all'):
+    """
+    Busca resultados de um cursor e os formata como uma lista de dicionários (ou um único dicionário),
+    com as chaves em camelCase limpo (sem '_sg').
+
+    Args:
+        cursor: O objeto cursor do psycopg2.
+        fetch_method (str): 'all' para fetchall(), 'one' para fetchone().
+    """
+    columns = [desc.name for desc in cursor.description] # psycogp2 desc.name é o nome da coluna
+    
+    if fetch_method == 'one':
+        row = cursor.fetchone()
+        if not row:
+            return None
+        return _format_row_to_camel_case_dict(row, columns)
+    elif fetch_method == 'all':
+        rows = cursor.fetchall()
+        return [_format_row_to_camel_case_dict(row, columns) for row in rows]
+    return [] # Retorna lista vazia para outros métodos ou se 'all' e não houver linhas
+
+def _format_row_to_camel_case_dict(row, columns):
+    """
+    Formata uma única linha (tupla) em um dicionário com chaves camelCase limpas.
+    """
+    formatted_row = {}
+    for i, value in enumerate(row):
+        original_key = columns[i]
+        
+        # Lógica especial para 'spot_name' da tabela 'spots' (se for o caso)
+        # Se a coluna no DB for 'spot_name', ela se tornará 'spotName'
+        # Se a coluna no DB for 'name', e você quisesse 'spotName', o SELECT precisaria renomear 'name as spot_name'
+        # Assumindo que o DB tem 'spot_name', ela será convertida para 'spotName'
+        # Ou se o DB tem 'name', e você quer 'spotName', o SELECT tem que ser `name AS spot_name`.
+        # No seu schema, a coluna é 'spot_name', então ela será convertida para 'spotName' automaticamente.
+        
+        camel_key = _snake_to_camel_case(original_key)
+        formatted_row[camel_key] = value
+    return formatted_row
+
+# --- Funções de Escrita de Dados (INSERT/UPDATE) ---
+
+def add_spot_to_db(name, latitude, longitude, timezone):
     """
     Add a new beach (spot) to the database.
     If the beach already exists, it will not be added again.
@@ -20,19 +79,19 @@ def add_spot_to_db(name, latitude, longitude):
         cur.execute("SELECT spot_id FROM spots WHERE spot_name = %s", (name,))
         if cur.fetchone():
             print(f"Spot '{name}' already exists in the database.")
-            return
+            return None # Retorna None se já existe
 
         cur.execute(
             """
-            INSERT INTO spots (spot_name, latitude, longitude)
-            VALUES (%s, %s, %s)
+            INSERT INTO spots (spot_name, latitude, longitude, timezone)
+            VALUES (%s, %s, %s, %s)
             RETURNING spot_id;
             """,
-            (name, latitude, longitude)
+            (name, latitude, longitude, timezone) # Adicionado timezone aqui
         )
         new_id = cur.fetchone()[0]
         conn.commit()
-        print(f"Spot '{name}' (ID: {new_id}, Lat: {latitude}, Lng: {longitude}) addition completed!")
+        print(f"Spot '{name}' (ID: {new_id}, Lat: {latitude}, Lng: {longitude}, Timezone: {timezone}) addition completed!")
         return new_id
 
     except Exception as e:
@@ -44,49 +103,15 @@ def add_spot_to_db(name, latitude, longitude):
     finally:
         close_db_connection(conn, cur)
 
-def get_all_spots_from_db():
-    """
-    Loads all registered spots from the database.
-    """
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            raise Exception("Could not establish database connection.")
-        cur = conn.cursor()
-
-        cur.execute("SELECT spot_id, spot_name, latitude, longitude FROM spots ORDER BY spot_id;")
-        spots_db = cur.fetchall()
-
-        if not spots_db:
-            print("No spots found in the database. Please add spots.")
-            return []
-
-        formatted_spots = []
-        for s_id, s_name, s_lat, s_lon in spots_db:
-            formatted_spots.append({
-                'spot_id': s_id,
-                'name': s_name,
-                'latitude': s_lat,
-                'longitude': s_lon
-            })
-        return formatted_spots
-    except Exception as e:
-        print(f"Error loading spots from the database: {e}")
-        return None
-    finally:
-        close_db_connection(conn, cur)
-
 def insert_forecast_data(cursor, spot_id, forecast_data):
     """
     Inserts/Updates the forecast data into the forecasts table.
+    Assumes cursor and connection handling are managed by the calling function.
     """
     if not forecast_data:
         print("No hourly data to insert.")
         return
 
-    # Define columns for INSERT
     columns_names = sql.SQL("""
         spot_id, timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
         swell_height_sg, swell_direction_sg, swell_period_sg, secondary_swell_height_sg,
@@ -95,7 +120,6 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
         current_direction_sg, sea_level_sg
     """)
 
-    # Define columns for ON CONFLICT DO UPDATE SET
     cols_to_update = [
         "wave_height_sg", "wave_direction_sg", "wave_period_sg",
         "swell_height_sg", "swell_direction_sg", "swell_period_sg",
@@ -152,14 +176,13 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
             cursor.execute(insert_query, values_to_insert)
         except Exception as e:
             print(f"Error inserting/updating forecast for {spot_id} at {timestamp_utc}: {e}")
-            # If an error occurs, the current transaction is aborted.
-            # We continue processing, but you might want to log/handle this differently.
-            # A rollback is typically done at the end of the main transaction if ANY errors occur.
+            # Note: For bulk inserts, consider adding failed items to a list and handling transaction rollback for all
     print("Forecast insertion/update process finished.")
 
 def insert_extreme_tides_data(cursor, spot_id, extremes_data):
     """
     Inserts/Updates the tide extremes data into the tides_forecast table.
+    Assumes cursor and connection handling are managed by the calling function.
     """
     if not extremes_data:
         print("No tide extremes data to insert.")
@@ -183,12 +206,45 @@ def insert_extreme_tides_data(cursor, spot_id, extremes_data):
             cursor.execute(insert_query_tide, (spot_id, timestamp_utc, tide_type, tide_height))
         except Exception as e:
             print(f"Error inserting/updating tide extreme for {spot_id} at {timestamp_utc}: {e}")
-            # Similar to hourly forecast, errors abort the transaction.
+            # Note: For bulk inserts, consider adding failed items to a list and handling transaction rollback for all
     print("Tide extremes insertion/update process finished.")
+
+
+# --- Funções de Leitura de Dados (GET) ---
+
+def get_all_spots():
+    """
+    Recupera todos os spots de surf do banco de dados.
+    Retorna uma lista de dicionários, cada um representando um spot, com chaves em camelCase.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+
+        # Inclui a coluna timezone
+        cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots ORDER BY spot_id;")
+        
+        spots = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
+
+        if not spots:
+            print("No spots found in the database. Please add spots.")
+            return []
+        
+        return spots
+    except Exception as e:
+        print(f"Error loading spots from the database: {e}")
+        return [] # Retorna lista vazia em caso de erro
+    finally:
+        close_db_connection(conn, cur)
 
 def get_spot_by_id(spot_id):
     """
     Fetches details for a single surf spot by its ID.
+    Returns a dictionary with keys in camelCase.
     """
     conn = None
     cur = None
@@ -197,18 +253,14 @@ def get_spot_by_id(spot_id):
         if conn is None:
             return None
         cur = conn.cursor()
-        cur.execute("SELECT spot_id, spot_name, latitude, longitude FROM spots WHERE spot_id = %s;", (spot_id,))
+        # Inclui a coluna timezone
+        cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots WHERE spot_id = %s;", (spot_id,))
 
-        result = cur.fetchone()
-        if result:
-            return {
-                'spot_id': result[0],
-                'name': result[1], # Certifique-se de que este 'name' corresponde ao índice da coluna que você selecionou acima
-                'latitude': result[2],
-                'longitude': result[3]
-            }
-        else:
-            return None
+        spot = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
+        
+        if not spot:
+            print(f"No spot found with ID {spot_id}.")
+        return spot
     except Exception as e:
         print(f"Error fetching spot details for ID {spot_id}: {e}")
         return None
@@ -218,6 +270,8 @@ def get_spot_by_id(spot_id):
 def get_user_surf_level(user_id):
     """
     Fetches the surf level for a given user.
+    Assumes 'surf_level' column is directly in the 'users' table.
+    Returns a string or None.
     """
     conn = None
     cur = None
@@ -226,12 +280,18 @@ def get_user_surf_level(user_id):
         if conn is None:
             return None
         cur = conn.cursor()
+        # Assumindo que a coluna é 'surf_level' na tabela 'users'
         cur.execute("SELECT surf_level FROM users WHERE user_id = %s;", (user_id,))
+        
+        # Como esperamos apenas uma coluna, vamos retornar o valor diretamente
         result = cur.fetchone()
+        
         if result:
-            return result[0]
+            # O nome da coluna original é 'surf_level', que se torna 'surfLevel' no dicionário
+            # Mas aqui estamos pegando o valor diretamente da tupla result[0]
+            return result[0] 
         else:
-            print(f"User with ID {user_id} not found.")
+            print(f"User with ID {user_id} not found or no surf level set.")
             return None
     except Exception as e:
         print(f"Error fetching surf level for user {user_id}: {e}")
@@ -245,15 +305,8 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
     falls back to surf_level preferences if user_id is provided and no specific
     user preference is found for the spot.
 
-    Args:
-        spot_id (int): The ID of the surf spot.
-        user_id (int, optional): The ID of the user. If provided, user_spot_preferences
-                                    will be checked first.
-        surf_level (str, optional): The surf level (e.g., 'Intermediário', 'Maroleiro').
-                                        Used if user_id is None or no user-specific preference exists.
-
     Returns:
-        dict: A dictionary of preferences for the spot.
+        dict: A dictionary of preferences for the spot, with keys in camelCase.
               Returns None if no preferences are found for the given criteria.
     """
     conn = None
@@ -267,115 +320,56 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
 
         # 1. Try to get user-specific preferences first
         if user_id:
-            cur.execute("""
+            query = """
                 SELECT
                     min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    min_wave_period, max_wave_period, ideal_wave_period, -- NOVO
+                    min_wave_period, max_wave_period, ideal_wave_period,
                     min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
                     min_swell_period, max_swell_period, ideal_swell_period,
-                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period, -- Mudei aqui
-                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction, -- Mudei aqui
+                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period,
+                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction,
                     ideal_tide_type,
-                    min_sea_level, max_sea_level, ideal_sea_level, -- Maré nível, ideal
-                    ideal_water_temperature, -- Mudei aqui
-                    ideal_air_temperature, -- Mudei aqui
-                    ideal_current_speed, preferred_current_direction, -- Mudei aqui
+                    min_sea_level, max_sea_level, ideal_sea_level,
+                    ideal_water_temperature,
+                    ideal_air_temperature,
+                    ideal_current_speed, preferred_current_direction,
                     additional_considerations
                 FROM user_spot_preferences
                 WHERE user_id = %s AND spot_id = %s;
-            """, (user_id, spot_id))
-            user_pref = cur.fetchone()
-            if user_pref:
-                preferences = {
-                    'min_wave_height': user_pref[0],
-                    'max_wave_height': user_pref[1],
-                    'ideal_wave_height': user_pref[2],
-                    'preferred_wave_direction': user_pref[3],
-                    'min_wave_period': user_pref[4], # NOVO
-                    'max_wave_period': user_pref[5], # NOVO
-                    'ideal_wave_period': user_pref[6], # NOVO
-                    'min_swell_height': user_pref[7],
-                    'max_swell_height': user_pref[8],
-                    'ideal_swell_height': user_pref[9],
-                    'preferred_swell_direction': user_pref[10],
-                    'min_swell_period': user_pref[11],
-                    'max_swell_period': user_pref[12],
-                    'ideal_swell_period': user_pref[13],
-                    'ideal_secondary_swell_height': user_pref[14],
-                    'preferred_secondary_swell_direction': user_pref[15],
-                    'ideal_secondary_swell_period': user_pref[16],
-                    'min_wind_speed': user_pref[17], # NOVO
-                    'max_wind_speed': user_pref[18],
-                    'ideal_wind_speed': user_pref[19], # NOVO
-                    'preferred_wind_direction': user_pref[20],
-                    'ideal_tide_type': user_pref[21],
-                    'min_sea_level': user_pref[22], # Maré nível
-                    'max_sea_level': user_pref[23], # Maré nível
-                    'ideal_sea_level': user_pref[24], # Maré nível
-                    'ideal_water_temperature': user_pref[25],
-                    'ideal_air_temperature': user_pref[26],
-                    'ideal_current_speed': user_pref[27],
-                    'preferred_current_direction': user_pref[28],
-                    'additional_considerations': user_pref[29]
-                }
+            """
+            cur.execute(query, (user_id, spot_id))
+            preferences = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
+
+            if preferences:
                 print(f"Found user-specific preferences for spot {spot_id} and user {user_id}.")
                 return preferences
 
         # 2. If no user-specific preferences or no user_id, fall back to surf_level preferences
         if surf_level:
-            cur.execute("""
+            query = """
                 SELECT
                     min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    min_wave_period, max_wave_period, ideal_wave_period, -- NOVO
+                    min_wave_period, max_wave_period, ideal_wave_period,
                     min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
                     min_swell_period, max_swell_period, ideal_swell_period,
-                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period, -- Mudei aqui
-                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction, -- Mudei aqui
+                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period,
+                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction,
                     ideal_tide_type,
-                    min_sea_level, max_sea_level, ideal_sea_level, -- Maré nível, ideal
-                    ideal_water_temperature, -- Mudei aqui
-                    ideal_air_temperature, -- Mudei aqui
-                    ideal_current_speed, preferred_current_direction, -- Mudei aqui
+                    min_sea_level, max_sea_level, ideal_sea_level,
+                    ideal_water_temperature,
+                    ideal_air_temperature,
+                    ideal_current_speed, preferred_current_direction,
                     additional_considerations
                 FROM level_spot_preferences
                 WHERE surf_level = %s AND spot_id = %s;
-            """, (surf_level, spot_id))
-            level_pref = cur.fetchone()
-            if level_pref:
-                preferences = {
-                    'min_wave_height': level_pref[0],
-                    'max_wave_height': level_pref[1],
-                    'ideal_wave_height': level_pref[2],
-                    'preferred_wave_direction': level_pref[3],
-                    'min_wave_period': level_pref[4], # NOVO
-                    'max_wave_period': level_pref[5], # NOVO
-                    'ideal_wave_period': level_pref[6], # NOVO
-                    'min_swell_height': level_pref[7],
-                    'max_swell_height': level_pref[8],
-                    'ideal_swell_height': level_pref[9],
-                    'preferred_swell_direction': level_pref[10],
-                    'min_swell_period': level_pref[11],
-                    'max_swell_period': level_pref[12],
-                    'ideal_swell_period': level_pref[13],
-                    'ideal_secondary_swell_height': level_pref[14],
-                    'preferred_secondary_swell_direction': level_pref[15],
-                    'ideal_secondary_swell_period': level_pref[16],
-                    'min_wind_speed': level_pref[17], # NOVO
-                    'max_wind_speed': level_pref[18],
-                    'ideal_wind_speed': level_pref[19], # NOVO
-                    'preferred_wind_direction': level_pref[20],
-                    'ideal_tide_type': level_pref[21],
-                    'min_sea_level': level_pref[22], # Maré nível
-                    'max_sea_level': level_pref[23], # Maré nível
-                    'ideal_sea_level': level_pref[24], # Maré nível
-                    'ideal_water_temperature': level_pref[25],
-                    'ideal_air_temperature': level_pref[26],
-                    'ideal_current_speed': level_pref[27],
-                    'preferred_current_direction': level_pref[28],
-                    'additional_considerations': level_pref[29]
-                }
+            """
+            cur.execute(query, (surf_level, spot_id))
+            preferences = _fetch_results_as_camel_case_dict(cur, fetch_method='one')
+            
+            if preferences:
                 print(f"Found level-specific preferences for spot {spot_id} and level '{surf_level}'.")
                 return preferences
+        
         print(f"No preferences found for spot {spot_id} (user: {user_id}, level: {surf_level}).")
         return None
 
@@ -385,22 +379,22 @@ def get_spot_preferences(spot_id, user_id=None, surf_level=None):
     finally:
         close_db_connection(conn, cur)
 
-def get_forecast_data_for_spot(spot_id, start_time_utc, end_time_utc):
+def get_forecasts_from_db(spot_id, start_time_utc, end_time_utc):
     """
     Fetches hourly forecast data for a specific spot within a time range.
+    Returns a list of dictionaries with keys in camelCase.
     """
     conn = None
     cur = None
-    forecasts = []
     try:
         conn = get_db_connection()
         if conn is None:
             return []
         cur = conn.cursor()
 
-        cur.execute("""
+        query = """
             SELECT
-                timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
+                spot_id, timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
                 swell_height_sg, swell_direction_sg, swell_period_sg, secondary_swell_height_sg,
                 secondary_swell_direction_sg, secondary_swell_period_sg, wind_speed_sg,
                 wind_direction_sg, water_temperature_sg, air_temperature_sg, current_speed_sg,
@@ -408,29 +402,10 @@ def get_forecast_data_for_spot(spot_id, start_time_utc, end_time_utc):
             FROM forecasts
             WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
             ORDER BY timestamp_utc;
-        """, (spot_id, start_time_utc, end_time_utc))
-
-        rows = cur.fetchall()
-        for row in rows:
-            forecasts.append({
-                'timestamp_utc': row[0],
-                'waveHeight_sg': row[1],
-                'waveDirection_sg': row[2],
-                'wavePeriod_sg': row[3],
-                'swellHeight_sg': row[4],
-                'swellDirection_sg': row[5],
-                'swellPeriod_sg': row[6],
-                'secondarySwellHeight_sg': row[7],
-                'secondarySwellDirection_sg': row[8],
-                'secondarySwellPeriod_sg': row[9],
-                'windSpeed_sg': row[10],
-                'windDirection_sg': row[11],
-                'waterTemperature_sg': row[12],
-                'airTemperature_sg': row[13],
-                'currentSpeed_sg': row[14],
-                'currentDirection_sg': row[15],
-                'seaLevel_sg': row[16],
-            })
+        """
+        cur.execute(query, (spot_id, start_time_utc, end_time_utc))
+        
+        forecasts = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
         return forecasts
     except Exception as e:
         print(f"Error fetching forecast data for spot {spot_id}: {e}")
@@ -438,34 +413,29 @@ def get_forecast_data_for_spot(spot_id, start_time_utc, end_time_utc):
     finally:
         close_db_connection(conn, cur)
 
-def get_tide_extremes_for_spot(spot_id, start_time_utc, end_time_utc):
+def get_tides_forecast_from_db(spot_id, start_time_utc, end_time_utc):
     """
     Fetches tide extremes data for a specific spot within a time range.
+    Returns a list of dictionaries with keys in camelCase.
     """
     conn = None
     cur = None
-    tide_extremes = []
     try:
         conn = get_db_connection()
         if conn is None:
             return []
         cur = conn.cursor()
 
-        cur.execute("""
+        query = """
             SELECT
                 timestamp_utc, tide_type, height
             FROM tides_forecast
             WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
             ORDER BY timestamp_utc;
-        """, (spot_id, start_time_utc, end_time_utc))
-
-        rows = cur.fetchall()
-        for row in rows:
-            tide_extremes.append({
-                'timestamp_utc': row[0],
-                'type': row[1],
-                'height': row[2]
-            })
+        """
+        cur.execute(query, (spot_id, start_time_utc, end_time_utc))
+        
+        tide_extremes = _fetch_results_as_camel_case_dict(cur, fetch_method='all')
         return tide_extremes
     except Exception as e:
         print(f"Error fetching tide extremes for spot {spot_id}: {e}")

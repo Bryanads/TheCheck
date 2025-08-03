@@ -4,69 +4,82 @@ import arrow # Para lidar com timestamps
 
 def determine_tide_phase(current_time_utc, current_sea_level, tide_extremes):
     """
-    Determines the tide phase (low, high, rising, falling, mid) at a given time
-    based on tide extremes and current sea level.
+    Determina a fase da maré (low, high, rising, falling, mid, unknown) para um determinado ponto no tempo
+    e nível do mar, com base nos extremos de maré (altas e baixas) do dia.
 
     Args:
-        current_time_utc (datetime): The UTC datetime for which to determine the tide.
-        current_sea_level (float): The sea level at current_time_utc.
-        tide_extremes (list): A list of dictionaries, each containing 'timestamp_utc',
-                              'type' ('low'/'high'), and 'height' for tide extremes.
+        current_time_utc (datetime.datetime): O timestamp UTC atual para o qual determinar a fase.
+        current_sea_level (float): O nível do mar atual (altura da maré em metros) para o current_time_utc.
+        tide_extremes (list of dict): Uma lista de dicionários, cada um representando um extremo de maré
+                                      do dia, com chaves 'timestampUtc', 'tideType' ('low' ou 'high') e 'height'.
+                                      Esses dados já vêm em camelCase do queries.py.
 
     Returns:
-        str: 'low', 'high', 'rising', 'falling', 'mid', or 'unknown'.
+        str: A fase da maré (low, high, rising, falling, mid, unknown).
     """
-    if not tide_extremes:
-        return 'unknown'
+    if not tide_extremes or current_sea_level is None:
+        return "unknown"
 
-    # Ensure tide_extremes are sorted by timestamp
-    tide_extremes.sort(key=lambda x: x['timestamp_utc'])
+    # Garante que os extremos de maré estejam ordenados por timestampUtc
+    # CORREÇÃO AQUI: Acessa 'timestampUtc' (camelCase)
+    tide_extremes.sort(key=lambda x: x['timestampUtc'])
 
+    # Encontra o extremo de maré anterior e o próximo ao current_time_utc
     prev_extreme = None
     next_extreme = None
 
     for i, extreme in enumerate(tide_extremes):
-        if extreme['timestamp_utc'] > current_time_utc:
+        # CORREÇÃO AQUI: Acessa 'timestampUtc' (camelCase)
+        extreme_time_utc = extreme['timestampUtc']
+
+        if extreme_time_utc <= current_time_utc:
+            prev_extreme = extreme
+        elif extreme_time_utc > current_time_utc:
             next_extreme = extreme
-            if i > 0:
-                prev_extreme = tide_extremes[i-1]
             break
-    if next_extreme is None and tide_extremes: # If current_time_utc is after all extremes
-        prev_extreme = tide_extremes[-1]
-        # We don't have a 'next' extreme, so it's hard to determine phase
-        return 'unknown' # Or assume it's still rising/falling based on last trend
 
+    # Se estamos exatamente em um extremo
+    if prev_extreme and prev_extreme['timestampUtc'] == current_time_utc:
+        # CORREÇÃO AQUI: Acessa 'tideType' (camelCase)
+        return prev_extreme['tideType']
 
-    # If current_time_utc is exactly at an extreme
-    if next_extreme and next_extreme['timestamp_utc'] == current_time_utc:
-        return next_extreme['type']
+    # Se não há extremo anterior ou próximo, não podemos determinar
+    if not prev_extreme or not next_extreme:
+        return "unknown" # Ou "mid" se houver apenas um extremo antes ou depois, mas não ambos
 
-    # If current_time_utc is before the first extreme
-    if prev_extreme is None:
-        # We only have future extremes, hard to know past phase without more data
-        return 'unknown'
+    # CORREÇÃO AQUI: Acessa 'tideType' e 'height' (camelCase)
+    prev_type = prev_extreme['tideType']
+    prev_height = prev_extreme['height']
+    next_type = next_extreme['tideType']
+    next_height = next_extreme['height']
 
-    # Determine phase between two extremes
-    if prev_extreme and next_extreme:
-        if prev_extreme['type'] == 'low' and next_extreme['type'] == 'high':
-            # Low to High: Tide is rising
-            # If current_sea_level is close to prev_extreme['height'], it's low
-            # If current_sea_level is close to next_extreme['height'], it's high
-            # Otherwise, it's rising
-            if current_sea_level is not None and prev_extreme['height'] is not None and abs(float(current_sea_level) - float(prev_extreme['height'])) < 0.1: # Threshold for 'low'
-                 return 'low'
-            elif current_sea_level is not None and next_extreme['height'] is not None and abs(float(current_sea_level) - float(next_extreme['height'])) < 0.1: # Threshold for 'high'
-                 return 'high'
-            return 'rising'
-        elif prev_extreme['type'] == 'high' and next_extreme['type'] == 'low':
-            # High to Low: Tide is falling
-            if current_sea_level is not None and prev_extreme['height'] is not None and abs(float(current_sea_level) - float(prev_extreme['height'])) < 0.1: # Threshold for 'high'
-                 return 'high'
-            elif current_sea_level is not None and next_extreme['height'] is not None and abs(float(current_sea_level) - float(next_extreme['height'])) < 0.1: # Threshold for 'low'
-                 return 'low'
-            return 'falling'
-
-    return 'mid' # Default if exact phase not determined (e.g., in between, not at extreme)
+    # Determina se a maré está subindo ou descendo
+    if prev_type == 'low' and next_type == 'high':
+        # Maré subindo
+        if current_sea_level > prev_height and current_sea_level < next_height:
+            return "rising"
+        elif current_sea_level <= prev_height: # Caso esteja muito próximo do low anterior
+            return "low"
+        elif current_sea_level >= next_height: # Caso esteja muito próximo do high seguinte
+            return "high"
+        else: # Pode ser erro ou dado inconsistente
+            return "unknown"
+    elif prev_type == 'high' and next_type == 'low':
+        # Maré descendo
+        if current_sea_level < prev_height and current_sea_level > next_height:
+            return "falling"
+        elif current_sea_level >= prev_height: # Caso esteja muito próximo do high anterior
+            return "high"
+        elif current_sea_level <= next_height: # Caso esteja muito próximo do low seguinte
+            return "low"
+        else: # Pode ser erro ou dado inconsistente
+            return "unknown"
+    
+    # Se chegamos aqui, é um cenário inesperado ou a maré está no meio entre dois extremos do mesmo tipo
+    # (o que não deveria acontecer se os extremos forem Low e High alternados).
+    # Ou se for um ponto exato onde a maré está estável ou em transição.
+    # Por segurança, podemos classificar como "mid" se estiver entre dois extremos válidos, mas sem direção clara.
+    return "mid"
 
 def get_cardinal_direction(degrees):
     """Converts degrees to cardinal direction (e.g., 180 -> 'S')."""
