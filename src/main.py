@@ -11,7 +11,6 @@ from src.db.queries import (
 )
 from src.recommendation.data_fetcher import determine_tide_phase, get_cardinal_direction
 from src.recommendation.recommendation_logic import calculate_suitability_score
-from src.config import HOURS_FILTER
 
 
 def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
@@ -61,10 +60,6 @@ def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
 
         for entry in forecast_data:
             timestamp = entry['timestamp_utc']
-            hour_utc = arrow.get(timestamp).hour
-
-            if hour_utc not in HOURS_FILTER:
-                continue
 
             tide_phase = determine_tide_phase(
                 timestamp,
@@ -94,7 +89,7 @@ def run_recommendation_for_user_and_spots(user_id, spot_ids_list):
 
 
     if recommendations:
-        recommendations.sort(key=lambda x: (x['suitability_score'], x['timestamp']), reverse=True)
+        recommendations.sort(key=lambda x: (-x['suitability_score'], x['timestamp']))
         print("\n--- TOP RECOMENDAÇÕES (incluindo scores baixos) ---")
         for rec in recommendations[:20]:
             wave_height_str = f"{rec['wave_height']:.1f}m" if rec['wave_height'] is not None else "N/A"
