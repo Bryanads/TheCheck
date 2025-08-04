@@ -2,6 +2,37 @@ import arrow
 import os
 import json
 
+def load_json_data(filename, directory):
+    """
+    Carrega dados JSON a partir de um arquivo localizado no diretório especificado.
+    """
+    path = os.path.join(directory, filename)
+    if not os.path.exists(path):
+        print(f"Arquivo não encontrado: {path}")
+        return None
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Erro ao carregar JSON de {path}: {e}")
+        return None
+
+
+def save_json_data(data, filename, directory):
+    """
+    Salva dados em formato JSON no diretório especificado.
+    Cria o diretório se ele não existir.
+    """
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, filename)
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"Erro ao salvar JSON em {path}: {e}")
+        raise e
+
+
 def convert_to_localtime(data, timezone='America/Sao_Paulo'):
     for entry in data:
         try:
@@ -46,3 +77,4 @@ def save_config(config_data, file_path='config.json'):
         print(f"Configuração salva em '{file_path}'.")
     except Exception as e:
         print(f"Erro ao salvar o arquivo de configuração '{file_path}': {e}")
+

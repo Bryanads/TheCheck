@@ -1,97 +1,88 @@
+# src/recommendation/data_fetcher.py
 import datetime
-import arrow # Para lidar com timestamps
+import decimal # Importar o módulo decimal para verificar o tipo
 
-def determine_tide_phase(current_time_utc, current_sea_level, tide_extremes):
+def determine_tide_phase(current_timestamp, tides_extremes):
     """
-    Determina a fase da maré (low, high, rising, falling, mid, unknown) para um determinado ponto no tempo
-    e nível do mar, com base nos extremos de maré (altas e baixas) do dia.
+    Determines the tide phase (e.g., 'low', 'high', 'rising', 'falling')
+    for a given timestamp based on a list of tide extreme events.
 
     Args:
-        current_time_utc (datetime.datetime): O timestamp UTC atual para o qual determinar a fase.
-        current_sea_level (float): O nível do mar atual (altura da maré em metros) para o current_time_utc.
-        tide_extremes (list of dict): Uma lista de dicionários, cada um representando um extremo de maré
-                                      do dia, com chaves 'timestamp_utc', 'tide_type' ('low' ou 'high') e 'height'
-                                      (agora em snake_case).
+        current_timestamp (datetime.datetime): The specific timestamp (UTC) for which
+                                                to determine the tide phase.
+        tides_extremes (list): A list of dictionaries, each representing a tide extreme event,
+                                with 'timestamp_utc', 'tide_type' ('low' or 'high'), and 'height'.
 
     Returns:
-        str: A fase da maré (low, high, rising, falling, mid, unknown).
+        str: The determined tide phase ('low', 'high', 'rising', 'falling'),
+             or 'unknown' if not enough data.
     """
-    if not tide_extremes or current_sea_level is None:
-        return "unknown"
+    if not tides_extremes:
+        return 'unknown'
 
-    # Garante que os extremos de maré estejam ordenados por timestamp_utc (snake_case)
-    tide_extremes.sort(key=lambda x: x['timestamp_utc'])
+    # Ensure current_timestamp is timezone-aware UTC
+    if current_timestamp.tzinfo is None:
+        current_timestamp = current_timestamp.replace(tzinfo=datetime.timezone.utc)
+    else:
+        current_timestamp = current_timestamp.astimezone(datetime.timezone.utc)
 
-    # Encontra o extremo de maré anterior e o próximo ao current_time_utc
-    prev_extreme = None
+    # Sort tide extremes by timestamp
+    sorted_extremes = sorted(tides_extremes, key=lambda x: x['timestamp_utc'])
+
+    previous_extreme = None
     next_extreme = None
 
-    for i, extreme in enumerate(tide_extremes):
-        extreme_time_utc = extreme['timestamp_utc'] # Acessa 'timestamp_utc' (snake_case)
-        if extreme_time_utc <= current_time_utc:
-            prev_extreme = extreme
-        else:
+    # Find the closest previous and next extreme tide events
+    for i, extreme in enumerate(sorted_extremes):
+        extreme_time = extreme['timestamp_utc']
+        if extreme_time <= current_timestamp:
+            previous_extreme = extreme
+        elif extreme_time > current_timestamp:
             next_extreme = extreme
-            break
+            break # Found the first extreme after current_timestamp
 
-    if prev_extreme is None and next_extreme is None:
-        return "unknown"
-    elif prev_extreme is None: # current_time_utc é anterior ao primeiro extremo do dia
-        # Se o primeiro extremo é uma maré baixa, a maré está subindo (ou está baixa no início do dia)
-        # Se o primeiro extremo é uma maré alta, a maré está caindo (ou está alta no início do dia)
-        if next_extreme['tide_type'] == 'low':
-            return "falling" # Assumindo que estava alta antes e está caindo para a baixa
-        else: # next_extreme['tide_type'] == 'high'
-            return "rising" # Assumindo que estava baixa antes e está subindo para a alta
-    elif next_extreme is None: # current_time_utc é posterior ao último extremo do dia
-        # Se o último extremo foi uma maré baixa, a maré está subindo
-        # Se o último extremo foi uma maré alta, a maré está caindo
-        if prev_extreme['tide_type'] == 'low':
-            return "rising" # Assumindo que estava baixa e está subindo
-        else: # prev_extreme['tide_type'] == 'high'
-            return "falling" # Assumindo que estava alta e está caindo
-    else:
-        # Ambos os extremos existem, e o current_time_utc está entre eles
-        prev_type = prev_extreme['tide_type']
-        next_type = next_extreme['tide_type']
+    if previous_extreme is None and next_extreme is None:
+        return 'unknown' # No extremes found
 
-        if prev_type == 'low' and next_type == 'high':
-            return "rising"
-        elif prev_type == 'high' and next_type == 'low':
-            return "falling"
-        # Casos onde o tipo se repete (e.g., high -> high, low -> low, o que não deveria acontecer se os extremos fossem apenas high/low)
-        # Isso pode indicar que o current_time_utc está muito próximo de um extremo.
-        elif prev_type == 'low' and next_type == 'low':
-             # Se o nível atual é próximo ao nível de prev_extreme, é "low". Caso contrário, "rising" para a próxima maré alta (fora do escopo dos extremos fornecidos)
-            if abs(current_sea_level - prev_extreme['height']) < 0.1: # Margem de erro de 10cm
-                return "low"
-            else:
-                return "rising" # Assumindo que está subindo após a maré baixa anterior
-        elif prev_type == 'high' and next_type == 'high':
-            # Similarmente, se o nível atual é próximo ao nível de prev_extreme, é "high". Caso contrário, "falling"
-            if abs(current_sea_level - prev_extreme['height']) < 0.1:
-                return "high"
-            else:
-                return "falling" # Assumindo que está caindo após a maré alta anterior
+    if previous_extreme and current_timestamp == previous_extreme['timestamp_utc']:
+        return previous_extreme['tide_type'] # Exactly at an extreme
 
-    # Para os próprios extremos ou muito próximo a eles
-    if prev_extreme and abs(current_time_utc - prev_extreme['timestamp_utc']).total_seconds() < 3600: # Dentro de 1 hora do extremo anterior
-        return prev_extreme['tide_type']
-    if next_extreme and abs(current_time_utc - next_extreme['timestamp_utc']).total_seconds() < 3600: # Dentro de 1 hora do próximo extremo
-        return next_extreme['tide_type']
+    if next_extreme and current_timestamp == next_extreme['timestamp_utc']:
+        return next_extreme['tide_type'] # Exactly at an extreme
 
-    # Se não for rising/falling/low/high, assume-se "mid"
-    return "mid"
+    if previous_extreme and not next_extreme:
+        # We are past the last known extreme for the day/range provided
+        # Could extrapolate, but safer to return a known state or 'unknown'
+        return f"after_{previous_extreme['tide_type']}" # Or just 'unknown'
 
+    if not previous_extreme and next_extreme:
+        # We are before the first known extreme for the day/range provided
+        return f"before_{next_extreme['tide_type']}" # Or just 'unknown'
+
+    # Determine rising or falling
+    if previous_extreme and next_extreme:
+        if previous_extreme['tide_type'] == 'low' and next_extreme['tide_type'] == 'high':
+            return 'rising'
+        elif previous_extreme['tide_type'] == 'high' and next_extreme['tide_type'] == 'low':
+            return 'falling'
+    
+    return 'unknown'
 
 def get_cardinal_direction(degrees):
     """
-    Converte graus decimais (0-360) para uma direção cardeal (N, NE, E, SE, S, SW, W, NW).
+    Converts degrees (0-360) to a cardinal or intercardinal direction.
+    Handles decimal.Decimal input by converting to float.
     """
     if degrees is None:
-        return "N/A" # Ou algum outro valor padrão
+        return "N/A"
+    
+    # Adicionar esta linha para garantir que 'degrees' seja um float
+    if isinstance(degrees, decimal.Decimal):
+        degrees = float(degrees)
 
-    directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-    # Adiciona 22.5 para centralizar os ranges: N de 337.5 a 22.5, NE de 22.5 a 67.5, etc.
-    index = round((degrees % 360) / 45) % 8
+    directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"]
+    
+    # Adiciona 11.25 para ajustar o ponto de partida (N é de 348.75 a 11.25)
+    index = int((degrees + 11.25) / 22.5) % 16
     return directions[index]

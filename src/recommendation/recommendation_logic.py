@@ -1,21 +1,26 @@
 import math
 from src.recommendation.data_fetcher import get_cardinal_direction
 
-def calculate_suitability_score(forecast_entry, preferences):
+def calculate_suitability_score(forecast_entry, spot_preferences, spot, tide_phase, user):
     """
-    Calculates a suitability score for a given forecast entry based on user/level preferences.
-    Guarantees a score >= 0, applying penalties for unsuitable conditions.
+    Calculates a suitability score for a given forecast entry at a specific spot,
+    considering user preferences, spot characteristics, and tide conditions.
 
     Args:
-        forecast_entry (dict): Um dicionário contendo os dados de previsão para um timestamp,
-                               com chaves em snake_case (ex: 'wave_height_sg', 'sea_level_sg').
-        preferences (dict): Um dicionário contendo as preferências do surfista/nível para o spot,
-                            com chaves em snake_case (ex: 'min_wave_height', 'ideal_tide_type').
+        forecast_entry (dict): Dictionary containing detailed forecast data for a specific hour.
+                               (e.g., 'wave_height_sg', 'sea_level_sg').
+        spot_preferences (dict): Dictionary of preferences for the specific spot,
+                                 either user-defined or model-generated/level-based.
+                                 (e.g., 'min_wave_height', 'ideal_tide_type').
+        spot (dict): Dictionary containing the spot's characteristics (e.g., bottom_type, coast_orientation).
+        tide_phase (str): The calculated tide phase ('low', 'high', 'rising', 'falling').
+                          Passado diretamente, não precisa ser extraído de forecast_entry.
+        user (dict): Dictionary containing user profile information (e.g., surf_level, goofy_regular_stance).
 
     Returns:
-        float: Um score de adequação (quanto maior, melhor).
-               Retorna um score baixo (próximo de zero) se as condições são muito inadequadas,
-               mas não zero, a menos que dados críticos estejam faltando completamente.
+        float: A suitability score (higher is better).
+               Returns a low score (close to zero) if conditions are very unsuitable,
+               but not zero unless critical data is completely missing.
     """
     score = 50.0 # Score base arbitrário.
     # Definindo pesos e penalidades para maior controle
@@ -32,9 +37,9 @@ def calculate_suitability_score(forecast_entry, preferences):
     BONUS_VERY_LOW = 2 # Novo bônus para pequenas vantagens
 
     # Função auxiliar para obter o valor da preferência e converter para float se necessário
-    # As chaves de preferências devem vir já em snake_case do banco de dados (get_spot_preferences)
+    # As chaves de spot_preferences devem vir já em snake_case do banco de dados (get_spot_preferences)
     def get_pref_float(key):
-        val = preferences.get(key)
+        val = spot_preferences.get(key) # Agora usa spot_preferences
         return float(val) if val is not None else None
 
     # NOVO: Função auxiliar para pontuar quando apenas o "ideal" é fornecido
@@ -113,7 +118,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     score += score_proximity_to_range_ideal(wave_period, min_wp, max_wp, ideal_wp) * WEIGHT_MINOR
 
     wave_direction = forecast_entry.get('wave_direction_sg')
-    pref_wd = preferences.get('preferred_wave_direction')
+    pref_wd = spot_preferences.get('preferred_wave_direction') # Usando spot_preferences
     if wave_direction is not None and pref_wd is not None:
         current_cardinal_wd = get_cardinal_direction(wave_direction)
         if current_cardinal_wd == pref_wd:
@@ -136,7 +141,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     score += score_proximity_to_range_ideal(swell_period, min_sp, max_sp, ideal_sp) * WEIGHT_MINOR
 
     swell_direction = forecast_entry.get('swell_direction_sg')
-    pref_sd = preferences.get('preferred_swell_direction')
+    pref_sd = spot_preferences.get('preferred_swell_direction') # Usando spot_preferences
     if swell_direction is not None and pref_sd is not None:
         current_cardinal_sd = get_cardinal_direction(swell_direction)
         if current_cardinal_sd == pref_sd:
@@ -154,7 +159,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     score += score_proximity_to_single_ideal(secondary_swell_period, ideal_ssp) * WEIGHT_TERTIARY
 
     secondary_swell_direction = forecast_entry.get('secondary_swell_direction_sg')
-    pref_ssd = preferences.get('preferred_secondary_swell_direction')
+    pref_ssd = spot_preferences.get('preferred_secondary_swell_direction') # Usando spot_preferences
     if secondary_swell_direction is not None and pref_ssd is not None:
         current_cardinal_ssd = get_cardinal_direction(secondary_swell_direction)
         if current_cardinal_ssd == pref_ssd:
@@ -171,7 +176,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     score += score_proximity_to_range_ideal(wind_speed, min_ws, max_ws, ideal_ws) * WEIGHT_MAJOR # Vento é crítico
 
     wind_direction = forecast_entry.get('wind_direction_sg')
-    pref_wd_wind = preferences.get('preferred_wind_direction')
+    pref_wd_wind = spot_preferences.get('preferred_wind_direction') # Usando spot_preferences
     if wind_direction is not None and pref_wd_wind is not None:
         current_cardinal_wd_wind = get_cardinal_direction(wind_direction)
         # Prefere vento "offshore" ou "cross-offshore" para a maioria dos picos.
@@ -184,14 +189,12 @@ def calculate_suitability_score(forecast_entry, preferences):
 
 
     # Maré (Tide)
-    # A fase da maré é determinada pela função `determine_tide_phase` e adicionada no `generate_recommendations_logic`
-    # A preferência é para o tipo de maré (e.g., 'low', 'mid', 'high', 'rising', 'falling')
-    current_tide_phase = forecast_entry.get('tide_phase') # Este campo é adicionado no recommendation_routes.py
-    ideal_tide_type = preferences.get('ideal_tide_type')
-    if current_tide_phase and ideal_tide_type:
-        if current_tide_phase.lower() == ideal_tide_type.lower():
+    # 'tide_phase' já está a ser passado como um argumento separado, não precisa de ser extraído de forecast_entry
+    ideal_tide_type = spot_preferences.get('ideal_tide_type') # Usando spot_preferences
+    if tide_phase and ideal_tide_type: # Agora usa tide_phase diretamente
+        if tide_phase.lower() == ideal_tide_type.lower():
             score += BONUS_GOOD
-        elif current_tide_phase.lower() in ["low", "high"] and ideal_tide_type.lower() in ["rising", "falling"]:
+        elif tide_phase.lower() in ["low", "high"] and ideal_tide_type.lower() in ["rising", "falling"]:
             score -= PENALTY_LOW # Pequena penalidade se é um extremo quando prefere movimento
         else:
             score -= PENALTY_MEDIUM # Penalidade se a maré é totalmente diferente do ideal
@@ -217,7 +220,7 @@ def calculate_suitability_score(forecast_entry, preferences):
     score += score_proximity_to_single_ideal(current_speed, ideal_cs) * WEIGHT_TERTIARY
 
     current_direction = forecast_entry.get('current_direction_sg')
-    pref_cd = preferences.get('preferred_current_direction')
+    pref_cd = spot_preferences.get('preferred_current_direction') # Usando spot_preferences
     if current_direction is not None and pref_cd is not None:
         current_cardinal_cd = get_cardinal_direction(current_direction)
         if current_cardinal_cd == pref_cd:
@@ -225,5 +228,31 @@ def calculate_suitability_score(forecast_entry, preferences):
         else:
             score -= PENALTY_VERY_LOW
 
+    # Nível do Utilizador (User Level)
+    # `user` é um argumento agora, e `spot` também pode ter características relevantes
+    user_surf_level = user.get('surf_level')
+    spot_bottom_type = spot.get('bottom_type')
+    spot_coast_orientation = spot.get('coast_orientation')
+
+    # Exemplo: Penalizar se o nível do utilizador for "iniciante" e as ondas forem muito grandes,
+    # mesmo que as preferências do spot permitam ondas grandes (o que é improvável, mas para ilustrar)
+    if user_surf_level == 'beginner' and wave_height is not None and wave_height > 2.0: # Exemplo de threshold
+        score -= PENALTY_HIGH # Penalidade extra para iniciantes em ondas grandes
+
     # Garante que o score não seja negativo
-    return max(0, score)
+    final_score = max(0, score)
+    
+    # Você pode adicionar um dicionário 'detailed_scores' aqui, se quiser um breakdown
+    # por exemplo: detailed_scores = {'wave_height': wave_height_score, 'wind': wind_score, ...}
+    # Por enquanto, retorna apenas o score final, mas a função em recommendation_routes.py espera 2 retornos.
+    # Vamos adicionar um placeholder para detailed_scores para evitar erros futuros.
+    detailed_scores = {
+        "wave_height_score": score_proximity_to_range_ideal(wave_height, min_wh, max_wh, ideal_wh),
+        "swell_direction_score": BONUS_GOOD if current_cardinal_sd == pref_sd else -PENALTY_LOW,
+        "wind_score": BONUS_GOOD if current_cardinal_wd_wind == pref_wd_wind else -PENALTY_HIGH,
+        "tide_score": BONUS_GOOD if tide_phase == ideal_tide_type else -PENALTY_MEDIUM,
+        # Adicione mais conforme a sua lógica de detalhamento
+    }
+
+
+    return final_score, detailed_scores

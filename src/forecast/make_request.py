@@ -5,7 +5,7 @@ import os
 import sys
 import decimal
 from src.db.connection import get_db_connection, close_db_connection
-from src.db.queries import get_all_spots_from_db
+from src.db.queries import get_all_spots
 from src.config import (
     API_KEY_STORMGLASS, REQUEST_DIR, FORECAST_DAYS,
     WEATHER_API_URL, TIDE_SEA_LEVEL_API_URL, TIDE_EXTREMES_API_URL, PARAMS_WEATHER_API
@@ -17,7 +17,7 @@ def choose_spot_from_db(available_spots):
 
     print("\nChoose one of the available spots in the database:")
     for i, spot in enumerate(available_spots):
-        print(f"{i + 1}. {spot['name']}")
+        print(f"{i + 1}. {spot['spot_name']}")
 
     while True:
         try:
@@ -49,7 +49,7 @@ if __name__ == "__main__":
     if conn is None:
         sys.exit(1)
 
-    available_spots = get_all_spots_from_db()
+    available_spots = get_all_spots()
     if not available_spots:
         close_db_connection(conn, None)
         sys.exit(1)
@@ -71,6 +71,9 @@ if __name__ == "__main__":
     start = arrow.now()
     end = start.shift(days=FORECAST_DAYS)
     headers = {'Authorization': API_KEY_STORMGLASS}
+
+    start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = end.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     fetch_and_save_data(
         WEATHER_API_URL,
@@ -114,3 +117,5 @@ if __name__ == "__main__":
     )
 
     close_db_connection(conn, None)
+
+

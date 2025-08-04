@@ -8,10 +8,11 @@ This document details the relational database (SQL) schema for the 'TheCheck' sy
 3.  [`tides_forecast` Table](#3-tides_forecast-table)
 4.  [`users` Table](#4-users-table)
 5.  [`user_spot_preferences` Table](#5-user_spot_preferences-table)
-6.  [`level_spot_preferences` Table](#6-level_spot_preferences-table)
-7.  [`surf_ratings` Table](#7-surf_ratings-table)
-8.  [`rating_conditions_snapshot` Table](#8-rating_conditions_snapshot-table)
-9.  [SQL Schema (PostgreSQL)](#sql-schema-postgresql)
+6.  [`model_spot_preferences` Table](#6-model_spot_preferences-table)
+7.  [`level_spot_preferences` Table](#7-level_spot_preferences-table)
+8.  [`surf_ratings` Table](#8-surf_ratings-table)
+9.  [`rating_conditions_snapshot` Table](#9-rating_conditions_snapshot-table)
+10. [SQL Schema (PostgreSQL)](#sql-schema-postgresql)
 
 ## 1. `spots` Table
 
@@ -23,367 +24,480 @@ Stores static and geographical information about each surf spot.
 | `spot_name` | VARCHAR(255) UNIQUE NOT NULL | Common and unique name of the surf spot (e.g., "Reserva", "Macumba"). |
 | `latitude` | NUMERIC(10, 7) NOT NULL | Latitude of the surf spot's location. |
 | `longitude` | NUMERIC(10, 7) NOT NULL | Longitude of the surf spot's location. |
-| `bottom_type` | VARCHAR(50) | Type of seafloor at the spot (e.g., "Sand", "Coral", "Reef", "Mixed"). |
-| `coast_orientation` | VARCHAR(10) | Primary orientation of the spot's coastline (e.g., "SE", "NW", "S"). |
-| `description` | TEXT | A brief general description of the surf spot. |
-| `general_characteristics` | JSONB | Less structured or dynamic characteristics (ex: "crowd", "wave", "best_tide"). |
+| `timezone` | VARCHAR(64) NOT NULL | IANA Time Zone string (e.g., 'America/Sao_Paulo') for the spot's local time. |
 
------
+---
 
 ## 2. `forecasts` Table
 
-Store weather, ondulation, wind and tide forecast data.
+Stores hourly forecast data for surf conditions at various spots.
 
 | Column Name | Data Type | Description |
-| :---------------------------- | :------------------------------------- | :----------------------------------------------------------------------------- |
-| `forecast_id` | BIGSERIAL PRIMARY KEY | Unique and auto-incrementing identifier for each hourly forecast record. |
-| `spot_id` | INTEGER NOT NULL REFERENCES spots(spot_id) | Foreign key to the `spots` table, associating the forecast with the surf spot. |
-| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The exact timestamp (in UTC) for which the forecast is valid. Crucial for time series. |
-| `wave_height_sg` | NUMERIC(5, 2) | Wave height (StormGlass source). |
-| `wave_direction_sg` | NUMERIC(6, 2) | Wave direction (StormGlass source). |
-| `wave_period_sg` | NUMERIC(5, 2) | Wave period (StormGlass source). |
-| `swell_height_sg` | NUMERIC(5, 2) | Primary swell height (StormGlass source). |
-| `swell_direction_sg` | NUMERIC(6, 2) | Primary swell direction (StormGlass source). |
-| `swell_period_sg` | NUMERIC(5, 2) | Primary swell period (StormGlass source). |
-| `secondary_swell_height_sg` | NUMERIC(5, 2) | Secondary swell height (StormGlass source). |
-| `secondary_swell_direction_sg` | NUMERIC(6, 2) | Secondary swell direction (StormGlass source). |
-| `secondary_swell_period_sg` | NUMERIC(5, 2) | Secondary swell period (StormGlass source). |
-| `wind_speed_sg` | NUMERIC(5, 2) | Wind speed (StormGlass source). |
-| `wind_direction_sg` | NUMERIC(6, 2) | Wind direction (StormGlass source). |
-| `water_temperature_sg` | NUMERIC(5, 2) | Water temperature (StormGlass source). |
-| `air_temperature_sg` | NUMERIC(5, 2) | Air temperature (StormGlass source). |
-| `current_speed_sg` | NUMERIC(5, 2) | Current speed (StormGlass source). |
-| `current_direction_sg` | NUMERIC(6, 2) | Current direction (StormGlass source). |
-| `sea_level_sg` | NUMERIC(5, 2) | Relative sea level (in meters) provided by StormGlass.io. |
-| `collection_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp of when this forecast was collected and inserted into the DB. |
+| :------------------------------ | :---------------------------- | :----------------------------------------------------------------------------------- |
+| `forecast_id` | SERIAL PRIMARY KEY | Unique identifier for each forecast entry. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The UTC timestamp for which the forecast data is valid (usually hourly). |
+| `wave_height_sg` | NUMERIC(5, 2) | Significant wave height (m). |
+| `wave_direction_sg` | NUMERIC(6, 2) | Wave direction (degrees true). |
+| `wave_period_sg` | NUMERIC(5, 2) | Wave period (s). |
+| `swell_height_sg` | NUMERIC(5, 2) | Primary swell height (m). |
+| `swell_direction_sg` | NUMERIC(6, 2) | Primary swell direction (degrees true). |
+| `swell_period_sg` | NUMERIC(5, 2) | Primary swell period (s). |
+| `secondary_swell_height_sg` | NUMERIC(5, 2) | Secondary swell height (m). |
+| `secondary_swell_direction_sg` | NUMERIC(6, 2) | Secondary swell direction (degrees true). |
+| `secondary_swell_period_sg` | NUMERIC(5, 2) | Secondary swell period (s). |
+| `wind_speed_sg` | NUMERIC(5, 2) | Wind speed (m/s). |
+| `wind_direction_sg` | NUMERIC(6, 2) | Wind direction (degrees true). |
+| `water_temperature_sg` | NUMERIC(5, 2) | Water temperature (°C). |
+| `air_temperature_sg` | NUMERIC(5, 2) | Air temperature (°C). |
+| `current_speed_sg` | NUMERIC(5, 2) | Ocean current speed (m/s). |
+| `current_direction_sg` | NUMERIC(6, 2) | Ocean current direction (degrees true). |
+| `sea_level_sg` | NUMERIC(5, 2) | Sea level anomaly (m) relative to mean sea level (used for tide calculation). |
+| `snapshot_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this forecast entry was retrieved from the external API. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+**Constraints:**
+* `fk_spot`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+* `uq_forecast_spot_timestamp`: Unique constraint to prevent duplicate forecast entries for the same spot and timestamp.
+
+---
 
 ## 3. `tides_forecast` Table
 
-Stores tide events (high/low) for each spot and date.
+Stores predicted tidal extreme (high/low) times and heights for various spots.
 
 | Column Name | Data Type | Description |
-| :---------------- | :------------------------------------- | :----------------------------------------------------------------------------- |
-| `tide_forecast_id` | BIGSERIAL PRIMARY KEY | Unique and auto-incrementing identifier for each tide event. |
-| `spot_id` | INTEGER NOT NULL REFERENCES spots(spot_id) | Foreign key to the `spots` table, associating the tide event with the surf spot. |
-| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The exact timestamp (in UTC) of the tide event (e.g., peak high/low tide). |
-| `tide_type` | VARCHAR(10) NOT NULL | Type of tide event (e.g., "high", "low"). |
-| `height` | NUMERIC(5, 3) NOT NULL | Height of the tide at that point. |
-| `collection_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp of when this tide information was collected and inserted into the DB. |
+| :---------------- | :---------------------------- | :---------------------------------------------------------------------------------- |
+| `tide_id` | SERIAL PRIMARY KEY | Unique identifier for each tide forecast entry. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The UTC timestamp for the predicted high or low tide. |
+| `tide_type` | VARCHAR(10) NOT NULL | Type of tide ('high' or 'low'). |
+| `height` | NUMERIC(5, 2) NOT NULL | Predicted tide height (m) relative to a local datum. |
+| `snapshot_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this tide forecast entry was retrieved from the external API. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+**Constraints:**
+* `fk_spot_tide`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+* `uq_tide_spot_timestamp_type`: Unique constraint to prevent duplicate tide entries for the same spot, timestamp, and type.
+
+---
 
 ## 4. `users` Table
 
-Stores user profile information, including their global preferences.
+Stores user authentication and profile information.
 
 | Column Name | Data Type | Description |
-| :----------------------- | :----------------------------------- | :----------------------------------------------------------------------------- |
-| `user_id` | SERIAL PRIMARY KEY | Unique and auto-incrementing identifier for the user. |
-| `name` | VARCHAR(255) NOT NULL | User's name. |
-| `email` | VARCHAR(255) UNIQUE NOT NULL | User's unique email address (used for login/identification). |
-| `surf_level` | VARCHAR(50) | Surfer's skill level (e.g., "Beginner", "Intermediate", "Advanced"). |
-| `preferred_region` | VARCHAR(255) | Surfer's preferred geographical region (to filter spots initially). |
-| `goofy_regular_stance` | VARCHAR(10) | Surfer's preferred stance on the board (e.g., 'Goofy', 'Regular', 'Ambidextrous'). |
-| `preferred_wave_direction` | VARCHAR(20) | Wave direction the surfer prefers to ride (e.g., 'Right', 'Left', 'Both'). |
-| `registration_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp of when the user registered in the system. |
+| :----------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------- |
+| `user_id` | UUID PRIMARY KEY DEFAULT gen_random_uuid() | Unique identifier for the user (UUID v4). |
+| `name` | VARCHAR(255) NOT NULL | User's full name or display name. |
+| `email` | VARCHAR(255) UNIQUE NOT NULL | User's email address, used for login and unique identification. |
+| `password_hash` | VARCHAR(255) NOT NULL | Hashed password of the user for secure storage. |
+| `surf_level` | VARCHAR(50) | User's surf level (e.g., 'beginner', 'intermediate', 'advanced', 'expert'). |
+| `goofy_regular_stance` | VARCHAR(10) | User's surfing stance ('goofy' or 'regular'). |
+| `preferred_wave_direction` | VARCHAR(20) | User's preferred wave direction (e.g., 'north', 'south', 'east', 'west', 'northeast', etc.). |
+| `bio` | TEXT | A short biography or description provided by the user. |
+| `profile_picture_url` | VARCHAR(255) | URL to the user's profile picture. |
+| `registration_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when the user registered. |
+| `last_login_timestamp` | TIMESTAMP WITH TIME ZONE | Timestamp of the user's last successful login. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+---
 
 ## 5. `user_spot_preferences` Table
 
-Stores detailed surf condition preferences for each user **specific to each surf spot**.
+Stores specific preferences for a user for a particular surf spot, overriding general preferences.
 
 | Column Name | Data Type | Description |
-| :------------------------- | :------------------------------------------- | :----------------------------------------------------------------------------- |
-| `preference_id` | SERIAL PRIMARY KEY | Unique identifier for each preference record. |
-| `user_id` | INTEGER NOT NULL REFERENCES users(user_id) | Foreign key to the `users` table. |
-| `spot_id` | INTEGER NOT NULL REFERENCES spots(spot_id) | Foreign key to the `spots` table. |
-| `min_wave_height` | NUMERIC(5, 2) | Minimum preferred wave height for this spot. |
-| `max_wave_height` | NUMERIC(5, 2) | Maximum preferred wave height for this spot. |
-| `preferred_swell_direction` | VARCHAR(50) | Preferred swell direction(s) for this spot (can be a list of values, or flexible field). |
-| `min_swell_period` | NUMERIC(5, 2) | Minimum preferred swell period for this spot. |
-| `max_swell_period` | NUMERIC(5, 2) | Maximum preferred swell period for this spot. |
-| `preferred_wind_direction` | VARCHAR(50) | Preferred wind direction(s) for this spot (e.g., 'N', 'NE', 'Offshore'). |
-| `max_wind_speed` | NUMERIC(5, 2) | Maximum tolerated wind speed for this spot. |
-| `additional_considerations` | TEXT | Additional notes or observations from the user about preferences for this spot. |
-| `last_updated` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp of the last update to this preference. |
-| **Unique Index** | `UNIQUE (user_id, spot_id)` | Ensures a user only has one preference per spot. |
+| :----------------------- | :---------------------------- | :--------------------------------------------------------------------------------------- |
+| `user_preference_id` | SERIAL PRIMARY KEY | Unique identifier for each user preference entry. |
+| `user_id` | UUID NOT NULL | Foreign key referencing `users.user_id`. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `min_wave_height` | NUMERIC(5, 2) | Minimum preferred wave height (m). |
+| `max_wave_height` | NUMERIC(5, 2) | Maximum preferred wave height (m). |
+| `ideal_wave_height` | NUMERIC(5, 2) | Ideal wave height (m). |
+| `preferred_swell_direction` | VARCHAR(20) | User's preferred swell direction for this spot. |
+| `ideal_tide_type` | VARCHAR(10) | User's ideal tide type ('high', 'low', 'mid', 'any'). |
+| `min_wind_speed` | NUMERIC(5, 2) | Minimum preferred wind speed (m/s). |
+| `max_wind_speed` | NUMERIC(5, 2) | Maximum preferred wind speed (m/s). |
+| `ideal_wind_speed` | NUMERIC(5, 2) | Ideal wind speed (m/s). |
+| `preferred_wind_direction` | VARCHAR(20) | User's preferred wind direction for this spot. |
+| `min_water_temperature` | NUMERIC(5, 2) | Minimum preferred water temperature (°C). |
+| `max_water_temperature` | NUMERIC(5, 2) | Maximum preferred water temperature (°C). |
+| `ideal_water_temperature` | NUMERIC(5, 2) | Ideal water temperature (°C). |
+| `min_air_temperature` | NUMERIC(5, 2) | Minimum preferred air temperature (°C). |
+| `max_air_temperature` | NUMERIC(5, 2) | Maximum preferred air temperature (°C). |
+| `ideal_air_temperature` | NUMERIC(5, 2) | Ideal air temperature (°C). |
+| `min_sea_level` | NUMERIC(5, 2) | Minimum preferred sea level (m). |
+| `max_sea_level` | NUMERIC(5, 2) | Maximum preferred sea level (m). |
+| `ideal_sea_level` | NUMERIC(5, 2) | Ideal sea level (m). |
+| `preferred_current_direction` | VARCHAR(20) | User's preferred current direction for this spot. |
+| `max_crowd_tolerance` | VARCHAR(20) | User's tolerance for crowd ('low', 'medium', 'high'). |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+**Constraints:**
+* `fk_user_pref`: Foreign key constraint linking `user_id` to `users.user_id`.
+* `fk_spot_pref`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+* `uq_user_spot_pref`: Unique constraint to ensure only one preference entry per user per spot.
 
-## 6. `level_spot_preferences` Table
+---
 
-This table will store "ideal conditions" presets for each surf level at each spot, either manually entered or derived from aggregated initial data.
+## 6. `model_spot_preferences` Table
 
-| Column Name | Data Type | Description |
-| :---------------------------------- | :------------------------------------------- | :----------------------------------------------------------------------------- |
-| `preference_id` | UUID PRIMARY KEY | Unique identifier for each level preference record. |
-| `spot_id` | INTEGER NOT NULL REFERENCES spots(spot_id) | Foreign key to the `spots` table. |
-| `surf_level` | TEXT NOT NULL | The surf level for which this preference is defined (e.g., "Beginner", "Intermediate"). |
-| `created_at` | TIMESTAMP WITH TIME ZONE | Timestamp of creation. |
-| `updated_at` | TIMESTAMP WITH TIME ZONE | Timestamp of last update. |
-| `min_wave_height` | NUMERIC(5, 2) | Minimum preferred wave height for this level at this spot. |
-| `max_wave_height` | NUMERIC(5, 2) | Maximum preferred wave height for this level at this spot. |
-| `ideal_wave_height` | NUMERIC(5, 2) | Ideal wave height for this level at this spot. |
-| `preferred_wave_direction` | TEXT | Preferred wave direction(s) for this level at this spot. |
-| `ideal_wave_period` | NUMERIC(5, 2) | Ideal wave period for this level at this spot. |
-| `min_wave_period` | NUMERIC(5, 2) | Minimum preferred wave period for this level at this spot. |
-| `max_wave_period` | NUMERIC(5, 2) | Maximum preferred wave period for this level at this spot. |
-| `min_swell_height` | NUMERIC(5, 2) | Minimum preferred swell height for this level at this spot. |
-| `max_swell_height` | NUMERIC(5, 2) | Maximum preferred swell height for this level at this spot. |
-| `ideal_swell_height` | NUMERIC(5, 2) | Ideal swell height for this level at this spot. |
-| `preferred_swell_direction` | TEXT | Preferred swell direction(s) for this level at this spot. |
-| `min_swell_period` | NUMERIC(5, 2) | Minimum preferred swell period for this level at this spot. |
-| `max_swell_period` | NUMERIC(5, 2) | Maximum preferred swell period for this level at this spot. |
-| `ideal_swell_period` | NUMERIC(5, 2) | Ideal swell period for this level at this spot. |
-| `ideal_secondary_swell_height` | NUMERIC(5, 2) | Ideal secondary swell height for this level at this spot. |
-| `preferred_secondary_swell_direction` | TEXT | Preferred secondary swell direction(s) for this level at this spot. |
-| `ideal_secondary_swell_period` | NUMERIC(5, 2) | Ideal secondary swell period for this level at this spot. |
-| `min_wind_speed` | NUMERIC(5, 2) | Minimum tolerated wind speed for this level at this spot. |
-| `max_wind_speed` | NUMERIC(5, 2) | Maximum tolerated wind speed for this level at this spot. |
-| `ideal_wind_speed` | NUMERIC(5, 2) | Ideal wind speed for this level at this spot. |
-| `preferred_wind_direction` | TEXT | Preferred wind direction(s) for this level at this spot. |
-| `ideal_tide_type` | TEXT | Ideal tide type (ex: 'high', 'low', 'mid', 'rising', 'falling'). |
-| `min_sea_level` | NUMERIC(5, 2) | Minimum preferred sea level for this level at this spot. |
-| `max_sea_level` | NUMERIC(5, 2) | Maximum preferred sea level for this level at this spot. |
-| `ideal_sea_level` | NUMERIC(5, 2) | Ideal sea level for this level at this spot. |
-| `ideal_current_speed` | NUMERIC(5, 2) | Ideal current speed for this level at this spot. |
-| `preferred_current_direction` | TEXT | Preferred current direction(s) for this level at this spot. |
-| `ideal_water_temperature` | NUMERIC(5, 2) | Ideal water temperature for this level at this spot. |
-| `ideal_air_temperature` | NUMERIC(5, 2) | Ideal air temperature for this level at this spot. |
-| `additional_considerations` | TEXT | Additional notes or observations about the preferences for this level at this spot. |
-| **Unique Index** | `UNIQUE (spot_id, surf_level)` | Ensures only one set of preferences per spot per level. |
-
------
-
-## 7. `surf_ratings` Table
-
-Stores user feedback on surf quality for a specific day/time at a particular spot, crucial for training the recommendation model.
+Stores default preferences for a given surf spot, to be used by the recommendation model if no user or level-specific preference is found. These are generally optimal conditions for the spot itself.
 
 | Column Name | Data Type | Description |
-| :------------------- | :------------------------------------------- | :----------------------------------------------------------------------------- |
-| `rating_id` | SERIAL PRIMARY KEY | Unique and auto-incrementing identifier for the rating. |
-| `user_id` | INTEGER NOT NULL REFERENCES users(user_id) | Foreign key to the `users` table. |
-| `spot_id` | INTEGER NOT NULL REFERENCES spots(spot_id) | Foreign key to the `spots` table. |
-| `rating_date` | DATE NOT NULL | The date on which the surf was rated. |
-| `rating_time` | TIME | The approximate time the surf session occurred (if the user can specify). |
-| `surf_quality` | INTEGER NOT NULL | Numeric score (e.g., 1 to 5 or 1 to 10) for the surf quality of the rated session. |
-| `comments` | TEXT | Additional comments from the user about the rated surf session. |
-| `registration_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp of when the rating was recorded in the system. |
+| :----------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------- |
+| `model_preference_id` | SERIAL PRIMARY KEY | Unique identifier for each model preference entry. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `min_wave_height` | NUMERIC(5, 2) | Minimum preferred wave height (m). |
+| `max_wave_height` | NUMERIC(5, 2) | Maximum preferred wave height (m). |
+| `ideal_wave_height` | NUMERIC(5, 2) | Ideal wave height (m). |
+| `preferred_swell_direction` | VARCHAR(20) | Preferred swell direction for this spot (e.g., 'southwest', 'east'). |
+| `ideal_tide_type` | VARCHAR(10) | Ideal tide type ('high', 'low', 'mid', 'any'). |
+| `min_wind_speed` | NUMERIC(5, 2) | Minimum preferred wind speed (m/s). |
+| `max_wind_speed` | NUMERIC(5, 2) | Maximum preferred wind speed (m/s). |
+| `ideal_wind_speed` | NUMERIC(5, 2) | Ideal wind speed (m/s). |
+| `preferred_wind_direction` | VARCHAR(20) | Preferred wind direction for this spot (e.g., 'northeast', 'south'). |
+| `min_water_temperature` | NUMERIC(5, 2) | Minimum preferred water temperature (°C). |
+| `max_water_temperature` | NUMERIC(5, 2) | Maximum preferred water temperature (°C). |
+| `ideal_water_temperature` | NUMERIC(5, 2) | Ideal water temperature (°C). |
+| `min_air_temperature` | NUMERIC(5, 2) | Minimum preferred air temperature (°C). |
+| `max_air_temperature` | NUMERIC(5, 2) | Maximum preferred air temperature (°C). |
+| `ideal_air_temperature` | NUMERIC(5, 2) | Ideal air temperature (°C). |
+| `min_sea_level` | NUMERIC(5, 2) | Minimum preferred sea level (m). |
+| `max_sea_level` | NUMERIC(5, 2) | Maximum preferred sea level (m). |
+| `ideal_sea_level` | NUMERIC(5, 2) | Ideal sea level (m). |
+| `preferred_current_direction` | VARCHAR(20) | Preferred current direction for this spot. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+**Constraints:**
+* `fk_spot_model_pref`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+* `uq_model_spot_pref`: Unique constraint to ensure only one model preference entry per spot.
 
-## 8. `rating_conditions_snapshot` Table
+---
 
-Stores a snapshot of environmental conditions (weather, swell, wind, tide) at the exact time a user surfed and provided a rating. This ensures historical context is preserved even if original forecast data is purged.
+## 7. `level_spot_preferences` Table
+
+Stores preferences for a given surf level at a particular surf spot. These preferences are applied if no user-specific preference is defined.
 
 | Column Name | Data Type | Description |
-| :------------------------------- | :---------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `snapshot_id` | BIGSERIAL PRIMARY KEY | Unique identifier for each conditions snapshot. |
-| `rating_id` | INTEGER NOT NULL UNIQUE REFERENCES surf_ratings(rating_id) | Foreign key to the `surf_ratings` table. **Unique** constraint ensures one snapshot per rating. |
-| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The UTC timestamp of the original conditions being snapshotted. Should ideally match the combined `rating_date` and `rating_time` from `surf_ratings`. |
-| `wave_height_sg` | NUMERIC(5, 2) | Snapshotted wave height from StormGlass. |
-| `wave_direction_sg` | NUMERIC(6, 2) | Snapshotted wave direction from StormGlass. |
-| `wave_period_sg` | NUMERIC(5, 2) | Snapshotted wave period from StormGlass. |
-| `swell_height_sg` | NUMERIC(5, 2) | Snapshotted primary swell height from StormGlass. |
-| `swell_direction_sg` | NUMERIC(6, 2) | Snapshotted primary swell direction from StormGlass. |
-| `swell_period_sg` | NUMERIC(5, 2) | Snapshotted primary swell period from StormGlass. |
-| `secondary_swell_height_sg` | NUMERIC(5, 2) | Snapshotted secondary swell height from StormGlass. |
-| `secondary_swell_direction_sg` | NUMERIC(6, 2) | Snapshotted secondary swell direction from StormGlass. |
-| `secondary_swell_period_sg` | NUMERIC(5, 2) | Snapshotted secondary swell period from StormGlass. |
-| `wind_speed_sg` | NUMERIC(5, 2) | Snapshotted wind speed from StormGlass. |
-| `wind_direction_sg` | NUMERIC(6, 2) | Snapshotted wind direction from StormGlass. |
-| `water_temperature_sg` | NUMERIC(5, 2) | Snapshotted water temperature from StormGlass. |
-| `air_temperature_sg` | NUMERIC(5, 2) | Snapshotted air temperature from StormGlass. |
-| `current_speed_sg` | NUMERIC(5, 2) | Snapshotted current speed from StormGlass. |
-| `current_direction_sg` | NUMERIC(6, 2) | Snapshotted current direction from StormGlass. |
-| `sea_level_sg` | NUMERIC(5, 2) | Snapshotted relative sea level from StormGlass. |
-| `tide_type` | VARCHAR(10) | Snapshotted tide type (high/low/etc.) for the rating time. |
-| `tide_height` | NUMERIC(5, 3) | Snapshotted tide height for the rating time. |
-| `snapshot_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | The timestamp when this conditions snapshot was created. |
+| :----------------------- | :---------------------------- | :------------------------------------------------------------------------------------------------- |
+| `level_preference_id` | SERIAL PRIMARY KEY | Unique identifier for each level preference entry. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `surf_level` | VARCHAR(50) NOT NULL | Surf level (e.g., 'beginner', 'intermediate', 'advanced', 'expert'). |
+| `min_wave_height` | NUMERIC(5, 2) | Minimum preferred wave height (m). |
+| `max_wave_height` | NUMERIC(5, 2) | Maximum preferred wave height (m). |
+| `ideal_wave_height` | NUMERIC(5, 2) | Ideal wave height (m). |
+| `preferred_swell_direction` | VARCHAR(20) | Preferred swell direction for this spot for this level. |
+| `ideal_tide_type` | VARCHAR(10) | Ideal tide type ('high', 'low', 'mid', 'any'). |
+| `min_wind_speed` | NUMERIC(5, 2) | Minimum preferred wind speed (m/s). |
+| `max_wind_speed` | NUMERIC(5, 2) | Maximum preferred wind speed (m/s). |
+| `ideal_wind_speed` | NUMERIC(5, 2) | Ideal wind speed (m/s). |
+| `preferred_wind_direction` | VARCHAR(20) | Preferred wind direction for this spot for this level. |
+| `min_water_temperature` | NUMERIC(5, 2) | Minimum preferred water temperature (°C). |
+| `max_water_temperature` | NUMERIC(5, 2) | Maximum preferred water temperature (°C). |
+| `ideal_water_temperature` | NUMERIC(5, 2) | Ideal water temperature (°C). |
+| `min_air_temperature` | NUMERIC(5, 2) | Minimum preferred air temperature (°C). |
+| `max_air_temperature` | NUMERIC(5, 2) | Maximum preferred air temperature (°C). |
+| `ideal_air_temperature` | NUMERIC(5, 2) | Ideal air temperature (°C). |
+| `min_sea_level` | NUMERIC(5, 2) | Minimum preferred sea level (m). |
+| `max_sea_level` | NUMERIC(5, 2) | Maximum preferred sea level (m). |
+| `ideal_sea_level` | NUMERIC(5, 2) | Ideal sea level (m). |
+| `preferred_current_direction` | VARCHAR(20) | Preferred current direction for this spot for this level. |
+| `max_crowd_tolerance` | VARCHAR(20) | Tolerance for crowd ('low', 'medium', 'high') for this level. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
 
------
+**Constraints:**
+* `fk_spot_level_pref`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+* `uq_level_spot_pref`: Unique constraint to ensure only one preference entry per spot per surf level.
+
+---
+
+## 8. `surf_ratings` Table
+
+Stores user-submitted ratings for past surf sessions, linking them to a specific spot and providing an overall assessment.
+
+| Column Name | Data Type | Description |
+| :----------------------- | :---------------------------- | :----------------------------------------------------------------------------- |
+| `rating_id` | SERIAL PRIMARY KEY | Unique identifier for each surf rating. |
+| `user_id` | UUID NOT NULL | Foreign key referencing `users.user_id`. |
+| `spot_id` | INTEGER NOT NULL | Foreign key referencing `spots.spot_id`. |
+| `rating_value` | INTEGER NOT NULL | User's rating for the surf session (e.g., 1-5, or a custom scale). |
+| `comments` | TEXT | Optional comments from the user about the session. |
+| `session_date` | DATE NOT NULL | The date of the surf session. |
+| `session_start_time` | TIME WITH TIME ZONE | Optional start time of the session (UTC). |
+| `session_end_time` | TIME WITH TIME ZONE | Optional end time of the session (UTC). |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
+
+**Constraints:**
+* `fk_user_rating`: Foreign key constraint linking `user_id` to `users.user_id`.
+* `fk_spot_rating`: Foreign key constraint linking `spot_id` to `spots.spot_id`.
+
+---
+
+## 9. `rating_conditions_snapshot` Table
+
+Stores a snapshot of environmental conditions at the time a `surf_rating` was given. This allows for historical analysis of what conditions led to a good or bad rating.
+
+| Column Name | Data Type | Description |
+| :----------------------------- | :---------------------------- | :------------------------------------------------------------------------------------- |
+| `snapshot_id` | SERIAL PRIMARY KEY | Unique identifier for each conditions snapshot. |
+| `rating_id` | INTEGER UNIQUE NOT NULL | Foreign key referencing `surf_ratings.rating_id`. Each rating can have only one snapshot. |
+| `timestamp_utc` | TIMESTAMP WITH TIME ZONE NOT NULL | The exact UTC timestamp of the conditions snapshot. |
+| `wave_height_sg` | NUMERIC(5, 2) | Significant wave height (m). |
+| `wave_direction_sg` | NUMERIC(6, 2) | Wave direction (degrees true). |
+| `wave_period_sg` | NUMERIC(5, 2) | Wave period (s). |
+| `swell_height_sg` | NUMERIC(5, 2) | Primary swell height (m). |
+| `swell_direction_sg` | NUMERIC(6, 2) | Primary swell direction (degrees true). |
+| `swell_period_sg` | NUMERIC(5, 2) | Primary swell period (s). |
+| `secondary_swell_height_sg` | NUMERIC(5, 2) | Secondary swell height (m). |
+| `secondary_swell_direction_sg` | NUMERIC(6, 2) | Secondary swell direction (degrees true). |
+| `secondary_swell_period_sg` | NUMERIC(5, 2) | Secondary swell period (s). |
+| `wind_speed_sg` | NUMERIC(5, 2) | Wind speed (m/s). |
+| `wind_direction_sg` | NUMERIC(6, 2) | Wind direction (degrees true). |
+| `water_temperature_sg` | NUMERIC(5, 2) | Water temperature (°C). |
+| `air_temperature_sg` | NUMERIC(5, 2) | Air temperature (°C). |
+| `current_speed_sg` | NUMERIC(5, 2) | Ocean current speed (m/s). |
+| `current_direction_sg` | NUMERIC(6, 2) | Ocean current direction (degrees true). |
+| `sea_level_sg` | NUMERIC(5, 2) | Sea level anomaly (m) relative to mean sea level. |
+| `tide_type` | VARCHAR(10) | Type of tide at the moment of the snapshot ('high', 'low', 'mid'). |
+| `tide_height` | NUMERIC(5, 3) | Actual tide height (m) at the moment of the snapshot. |
+| `snapshot_timestamp` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this snapshot record was created. |
+| `created_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp when this record was created in the database. |
+| `updated_at` | TIMESTAMP WITH TIME ZONE DEFAULT NOW() | Timestamp of the last update to this record. |
+| `is_deleted` | BOOLEAN DEFAULT FALSE | Flag to soft delete records. |
+
+**Constraints:**
+* `fk_rating_snapshot`: Foreign key constraint linking `rating_id` to `surf_ratings.rating_id`.
+* `uq_rating_id`: Unique constraint on `rating_id` to ensure one snapshot per rating.
+
+---
 
 ## SQL Schema (PostgreSQL)
 
 ```sql
--- Table creation for spots
-CREATE TABLE spots (
+-- Extensão para geração de UUIDs (se ainda não estiver habilitada)
+-- CREATE EXTENSION IF NOT EXISTS "uuid-ossp"; -- Ou gen_random_uuid() para PostgreSQL 13+
+
+CREATE TABLE IF NOT EXISTS spots (
     spot_id SERIAL PRIMARY KEY,
     spot_name VARCHAR(255) UNIQUE NOT NULL,
     latitude NUMERIC(10, 7) NOT NULL,
     longitude NUMERIC(10, 7) NOT NULL,
-    bottom_type VARCHAR(50),
-    coast_orientation VARCHAR(10),
-    description TEXT,
-    general_characteristics JSONB
+    timezone VARCHAR(64) NOT NULL, -- IANA Time Zone (e.g., 'America/Sao_Paulo')
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE
 );
 
--- Table creation for forecasts
-CREATE TABLE public.forecasts (
-    forecast_id bigserial not null,
-    spot_id integer not null,
-    timestamp_utc timestamp with time zone not null,
-    wave_height_sg numeric(5, 2) null,
-    wave_direction_sg numeric(6, 2) null,
-    wave_period_sg numeric(5, 2) null,
-    swell_height_sg numeric(5, 2) null,
-    swell_direction_sg numeric(6, 2) null,
-    swell_period_sg numeric(5, 2) null,
-    secondary_swell_height_sg numeric(5, 2) null,
-    secondary_swell_direction_sg numeric(6, 2) null,
-    secondary_swell_period_sg numeric(5, 2) null,
-    wind_speed_sg numeric(5, 2) null,
-    wind_direction_sg numeric(6, 2) null,
-    water_temperature_sg numeric(5, 2) null,
-    air_temperature_sg numeric(5, 2) null,
-    current_speed_sg numeric(5, 2) null,
-    current_direction_sg numeric(6, 2) null,
-    sea_level_sg numeric(5, 2) null,
-    collection_timestamp timestamp with time zone null default now(),
-    constraint forecasts_pkey primary key (forecast_id),
-    constraint forecasts_spot_id_timestamp_utc_key unique (spot_id, timestamp_utc),
-    constraint forecasts_spot_id_fkey foreign KEY (spot_id) references spots (spot_id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_forecasts_spot_ts on public.forecasts using btree (spot_id, timestamp_utc desc) TABLESPACE pg_default;
-create index IF not exists idx_forecasts_ts on public.forecasts using btree (timestamp_utc desc) TABLESPACE pg_default;
-
-
--- Table creation for tides_forecast
-CREATE TABLE tides_forecast (
-    tide_forecast_id BIGSERIAL PRIMARY KEY,
-    spot_id INTEGER NOT NULL REFERENCES spots(spot_id),
+CREATE TABLE IF NOT EXISTS forecasts (
+    forecast_id SERIAL PRIMARY KEY,
+    spot_id INTEGER NOT NULL,
     timestamp_utc TIMESTAMP WITH TIME ZONE NOT NULL,
-    tide_type VARCHAR(10) NOT NULL,
-    height NUMERIC(5, 3) NOT NULL,
-    collection_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (spot_id, timestamp_utc) -- Ensures no duplicate tide events for the same spot at the same timestamp
+    wave_height_sg NUMERIC(5, 2),
+    wave_direction_sg NUMERIC(6, 2),
+    wave_period_sg NUMERIC(5, 2),
+    swell_height_sg NUMERIC(5, 2),
+    swell_direction_sg NUMERIC(6, 2),
+    swell_period_sg NUMERIC(5, 2),
+    secondary_swell_height_sg NUMERIC(5, 2),
+    secondary_swell_direction_sg NUMERIC(6, 2),
+    secondary_swell_period_sg NUMERIC(5, 2),
+    wind_speed_sg NUMERIC(5, 2),
+    wind_direction_sg NUMERIC(6, 2),
+    water_temperature_sg NUMERIC(5, 2),
+    air_temperature_sg NUMERIC(5, 2),
+    current_speed_sg NUMERIC(5, 2),
+    current_direction_sg NUMERIC(6, 2),
+    sea_level_sg NUMERIC(5, 2),
+    snapshot_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_spot FOREIGN KEY (spot_id) REFERENCES spots(spot_id),
+    CONSTRAINT uq_forecast_spot_timestamp UNIQUE (spot_id, timestamp_utc)
 );
 
--- Index for tides_forecast
-CREATE INDEX idx_tides_forecast_spot_ts ON tides_forecast (spot_id, timestamp_utc);
+CREATE TABLE IF NOT EXISTS tides_forecast (
+    tide_id SERIAL PRIMARY KEY,
+    spot_id INTEGER NOT NULL,
+    timestamp_utc TIMESTAMP WITH TIME ZONE NOT NULL,
+    tide_type VARCHAR(10) NOT NULL, -- 'high' or 'low'
+    height NUMERIC(5, 2) NOT NULL,
+    snapshot_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_spot_tide FOREIGN KEY (spot_id) REFERENCES spots(spot_id),
+    CONSTRAINT uq_tide_spot_timestamp_type UNIQUE (spot_id, timestamp_utc, tide_type)
+);
 
--- Table creation for users
-CREATE TABLE users (
-    user_id SERIAL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS users (
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(), -- PostgreSQL 13+
+    -- user_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(), -- Para versões anteriores com uuid-ossp
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    surf_level VARCHAR(50),
-    preferred_region VARCHAR(255),
-    goofy_regular_stance VARCHAR(10),
-    preferred_wave_direction VARCHAR(20),
-    registration_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    password_hash VARCHAR(255) NOT NULL,
+    surf_level VARCHAR(50), -- e.g., 'beginner', 'intermediate', 'advanced', 'expert'
+    goofy_regular_stance VARCHAR(10), -- 'goofy' or 'regular'
+    preferred_wave_direction VARCHAR(20), -- 'north', 'south', 'east', 'west', 'northeast', etc.
+    bio TEXT,
+    profile_picture_url VARCHAR(255),
+    registration_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    last_login_timestamp TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE
 );
 
--- Table creation for user_spot_preferences
-CREATE TABLE user_spot_preferences (
-    preference_id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(user_id),
-    spot_id INTEGER NOT NULL REFERENCES spots(spot_id),
+CREATE TABLE IF NOT EXISTS user_spot_preferences (
+    user_preference_id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL,
+    spot_id INTEGER NOT NULL,
     min_wave_height NUMERIC(5, 2),
     max_wave_height NUMERIC(5, 2),
-    preferred_swell_direction VARCHAR(50), -- Can be a JSONB field or array of strings for multiple values
-    min_swell_period NUMERIC(5, 2),
-    max_swell_period NUMERIC(5, 2),
-    preferred_wind_direction VARCHAR(50), -- Can be a JSONB field or array of strings
+    ideal_wave_height NUMERIC(5, 2),
+    preferred_swell_direction VARCHAR(20),
+    ideal_tide_type VARCHAR(10),
+    min_wind_speed NUMERIC(5, 2),
     max_wind_speed NUMERIC(5, 2),
-    additional_considerations TEXT,
-    last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (user_id, spot_id) -- Ensures a user only has one preference per spot
+    ideal_wind_speed NUMERIC(5, 2),
+    preferred_wind_direction VARCHAR(20),
+    min_water_temperature NUMERIC(5, 2),
+    max_water_temperature NUMERIC(5, 2),
+    ideal_water_temperature NUMERIC(5, 2),
+    min_air_temperature NUMERIC(5, 2),
+    max_air_temperature NUMERIC(5, 2),
+    ideal_air_temperature NUMERIC(5, 2),
+    min_sea_level NUMERIC(5, 2),
+    max_sea_level NUMERIC(5, 2),
+    ideal_sea_level NUMERIC(5, 2),
+    preferred_current_direction VARCHAR(20),
+    max_crowd_tolerance VARCHAR(20), -- 'low', 'medium', 'high'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_user_pref FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT fk_spot_pref FOREIGN KEY (spot_id) REFERENCES spots(spot_id),
+    CONSTRAINT uq_user_spot_pref UNIQUE (user_id, spot_id)
 );
 
--- Table creation for level_spot_preferences
-CREATE TABLE public.level_spot_preferences (
-    preference_id uuid not null default gen_random_uuid (),
-    spot_id integer not null,
-    surf_level text not null,
-    created_at timestamp with time zone null default CURRENT_TIMESTAMP,
-    updated_at timestamp with time zone null default CURRENT_TIMESTAMP,
-    min_wave_height numeric(5, 2) null,
-    max_wave_height numeric(5, 2) null,
-    ideal_wave_height numeric(5, 2) null,
-    preferred_wave_direction text null,
-    ideal_wave_period numeric(5, 2) null,
-    min_wave_period numeric(5, 2) null,
-    max_wave_period numeric(5, 2) null,
-    min_swell_height numeric(5, 2) null,
-    max_swell_height numeric(5, 2) null,
-    ideal_swell_height numeric(5, 2) null,
-    preferred_swell_direction text null,
-    min_swell_period numeric(5, 2) null,
-    max_swell_period numeric(5, 2) null,
-    ideal_swell_period numeric(5, 2) null,
-    ideal_secondary_swell_height numeric(5, 2) null,
-    preferred_secondary_swell_direction text null,
-    ideal_secondary_swell_period numeric(5, 2) null,
-    min_wind_speed numeric(5, 2) null,
-    max_wind_speed numeric(5, 2) null,
-    ideal_wind_speed numeric(5, 2) null,
-    preferred_wind_direction text null,
-    ideal_tide_type text null,
-    min_sea_level numeric(5, 2) null,
-    max_sea_level numeric(5, 2) null,
-    ideal_sea_level numeric(5, 2) null,
-    ideal_current_speed numeric(5, 2) null,
-    preferred_current_direction text null,
-    ideal_water_temperature numeric(5, 2) null,
-    ideal_air_temperature numeric(5, 2) null,
-    additional_considerations text null,
-    constraint level_spot_preferences_pkey primary key (preference_id),
-    constraint level_spot_preferences_spot_id_surf_level_key unique (spot_id, surf_level),
-    constraint level_spot_preferences_spot_id_fkey foreign KEY (spot_id) references spots (spot_id)
-) TABLESPACE pg_default;
+CREATE TABLE IF NOT EXISTS model_spot_preferences (
+    model_preference_id SERIAL PRIMARY KEY,
+    spot_id INTEGER NOT NULL,
+    min_wave_height NUMERIC(5, 2),
+    max_wave_height NUMERIC(5, 2),
+    ideal_wave_height NUMERIC(5, 2),
+    preferred_swell_direction VARCHAR(20),
+    ideal_tide_type VARCHAR(10),
+    min_wind_speed NUMERIC(5, 2),
+    max_wind_speed NUMERIC(5, 2),
+    ideal_wind_speed NUMERIC(5, 2),
+    preferred_wind_direction VARCHAR(20),
+    min_water_temperature NUMERIC(5, 2),
+    max_water_temperature NUMERIC(5, 2),
+    ideal_water_temperature NUMERIC(5, 2),
+    min_air_temperature NUMERIC(5, 2),
+    max_air_temperature NUMERIC(5, 2),
+    ideal_air_temperature NUMERIC(5, 2),
+    min_sea_level NUMERIC(5, 2),
+    max_sea_level NUMERIC(5, 2),
+    ideal_sea_level NUMERIC(5, 2),
+    preferred_current_direction VARCHAR(20),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_spot_model_pref FOREIGN KEY (spot_id) REFERENCES spots(spot_id),
+    CONSTRAINT uq_model_spot_pref UNIQUE (spot_id)
+);
 
-CREATE INDEX idx_level_spot_preferences_level_spot_id ON public.level_spot_preferences using btree (spot_id, surf_level);
+CREATE TABLE IF NOT EXISTS level_spot_preferences (
+    level_preference_id SERIAL PRIMARY KEY,
+    spot_id INTEGER NOT NULL,
+    surf_level VARCHAR(50) NOT NULL,
+    min_wave_height NUMERIC(5, 2),
+    max_wave_height NUMERIC(5, 2),
+    ideal_wave_height NUMERIC(5, 2),
+    preferred_swell_direction VARCHAR(20),
+    ideal_tide_type VARCHAR(10),
+    min_wind_speed NUMERIC(5, 2),
+    max_wind_speed NUMERIC(5, 2),
+    ideal_wind_speed NUMERIC(5, 2),
+    preferred_wind_direction VARCHAR(20),
+    min_water_temperature NUMERIC(5, 2),
+    max_water_temperature NUMERIC(5, 2),
+    ideal_water_temperature NUMERIC(5, 2),
+    min_air_temperature NUMERIC(5, 2),
+    max_air_temperature NUMERIC(5, 2),
+    ideal_air_temperature NUMERIC(5, 2),
+    min_sea_level NUMERIC(5, 2),
+    max_sea_level NUMERIC(5, 2),
+    ideal_sea_level NUMERIC(5, 2),
+    preferred_current_direction VARCHAR(20),
+    max_crowd_tolerance VARCHAR(20), -- 'low', 'medium', 'high'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_spot_level_pref FOREIGN KEY (spot_id) REFERENCES spots(spot_id),
+    CONSTRAINT uq_level_spot_pref UNIQUE (spot_id, surf_level)
+);
 
-
--- Table creation for surf_ratings
-CREATE TABLE surf_ratings (
+CREATE TABLE IF NOT EXISTS surf_ratings (
     rating_id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(user_id),
-    spot_id INTEGER NOT NULL REFERENCES spots(spot_id),
-    rating_date DATE NOT NULL,
-    rating_time TIME,
-    surf_quality INTEGER NOT NULL,
+    user_id UUID NOT NULL,
+    spot_id INTEGER NOT NULL,
+    rating_value INTEGER NOT NULL,
     comments TEXT,
-    registration_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    session_date DATE NOT NULL,
+    session_start_time TIME WITH TIME ZONE,
+    session_end_time TIME WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_user_rating FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT fk_spot_rating FOREIGN KEY (spot_id) REFERENCES spots(spot_id)
 );
 
--- Index for surf_ratings
-CREATE INDEX idx_surf_ratings_user_spot_date ON surf_ratings (user_id, spot_id, rating_date);
-
--- Table creation for rating_conditions_snapshot
-CREATE TABLE public.rating_conditions_snapshot (
-    snapshot_id bigserial not null,
-    rating_id integer not null,
-    timestamp_utc timestamp with time zone not null,
-    wave_height_sg numeric(5, 2) null,
-    wave_direction_sg numeric(6, 2) null,
-    wave_period_sg numeric(5, 2) null,
-    swell_height_sg numeric(5, 2) null,
-    swell_direction_sg numeric(6, 2) null,
-    swell_period_sg numeric(5, 2) null,
-    secondary_swell_height_sg numeric(5, 2) null,
-    secondary_swell_direction_sg numeric(6, 2) null,
-    secondary_swell_period_sg numeric(5, 2) null,
-    wind_speed_sg numeric(5, 2) null,
-    wind_direction_sg numeric(6, 2) null,
-    water_temperature_sg numeric(5, 2) null,
-    air_temperature_sg numeric(5, 2) null,
-    current_speed_sg numeric(5, 2) null,
-    current_direction_sg numeric(6, 2) null,
-    sea_level_sg numeric(5, 2) null,
-    tide_type character varying(10) null,
-    tide_height numeric(5, 3) null,
-    snapshot_timestamp timestamp with time zone null default now(),
-    constraint rating_conditions_snapshot_pkey primary key (snapshot_id),
-    constraint rating_conditions_snapshot_rating_id_key unique (rating_id),
-    constraint rating_conditions_snapshot_rating_id_fkey foreign KEY (rating_id) references surf_ratings (rating_id)
-) TABLESPACE pg_default;
-
-create index IF not exists idx_rating_conditions_snapshot_rating_id on public.rating_conditions_snapshot using btree (rating_id) TABLESPACE pg_default;
-create index IF not exists idx_rating_conditions_snapshot_ts on public.rating_conditions_snapshot using btree (timestamp_utc) TABLESPACE pg_default;
-
+CREATE TABLE IF NOT EXISTS rating_conditions_snapshot (
+    snapshot_id SERIAL PRIMARY KEY,
+    rating_id INTEGER UNIQUE NOT NULL, -- UNIQUE para garantir 1 snapshot por rating
+    timestamp_utc TIMESTAMP WITH TIME ZONE NOT NULL,
+    wave_height_sg NUMERIC(5, 2),
+    wave_direction_sg NUMERIC(6, 2),
+    wave_period_sg NUMERIC(5, 2),
+    swell_height_sg NUMERIC(5, 2),
+    swell_direction_sg NUMERIC(6, 2),
+    swell_period_sg NUMERIC(5, 2),
+    secondary_swell_height_sg NUMERIC(5, 2),
+    secondary_swell_direction_sg NUMERIC(6, 2),
+    secondary_swell_period_sg NUMERIC(5, 2),
+    wind_speed_sg NUMERIC(5, 2),
+    wind_direction_sg NUMERIC(6, 2),
+    water_temperature_sg NUMERIC(5, 2),
+    air_temperature_sg NUMERIC(5, 2),
+    current_speed_sg NUMERIC(5, 2),
+    current_direction_sg NUMERIC(6, 2),
+    sea_level_sg NUMERIC(5, 2),
+    tide_type VARCHAR(10),
+    tide_height NUMERIC(5, 3),
+    snapshot_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    is_deleted BOOLEAN DEFAULT FALSE,
+    CONSTRAINT fk_rating_snapshot FOREIGN KEY (rating_id) REFERENCES surf_ratings(rating_id)
+);
+````

@@ -1,4 +1,3 @@
-# TheCheck/src/api/__init__.py
 from flask import Flask
 from flask_cors import CORS
 
@@ -14,8 +13,12 @@ def create_app():
     from .routes.forecast_routes import forecast_bp
     app.register_blueprint(forecast_bp)
 
-    # NOVO: Importa e registra a blueprint de spots
-    from .routes.spot_routes import spot_bp # <--- Adicione esta linha
-    app.register_blueprint(spot_bp) # <--- Adicione esta linha
+    # Importa e registra a blueprint de spots
+    from .routes.spot_routes import spot_bp
+    app.register_blueprint(spot_bp)
+
+    # Importa e registra a blueprint de usuários
+    from .routes.user_routes import user_bp  
+    app.register_blueprint(user_bp)
 
     return app

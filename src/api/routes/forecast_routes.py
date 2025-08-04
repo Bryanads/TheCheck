@@ -1,7 +1,15 @@
 from flask import Blueprint, request, jsonify
-import arrow
+import datetime
 from src.db.queries import get_spot_by_id, get_forecasts_from_db, get_tides_forecast_from_db
 from src.recommendation.data_fetcher import determine_tide_phase
+
+"""
+Exemplo de requisição para http://127.0.0.1/5000/forecasts
+{
+    "spot_ids": [1],
+    "day_offset": [0]
+}
+"""
 
 forecast_bp = Blueprint('forecasts', __name__)
 
@@ -28,46 +36,47 @@ def get_combined_forecasts_endpoint():
     error_messages = []
 
     for day_offset in day_offsets:
-        base_date = arrow.utcnow().shift(days=day_offset).floor('day')
-        start_utc = base_date.replace(hour=0, minute=0, second=0, microsecond=0).to('utc').datetime
-        end_utc = base_date.replace(hour=23, minute=59, second=59, microsecond=999999).to('utc').datetime
+        base_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=day_offset)
 
-        for s_id in spot_ids:
-            spot_details = get_spot_by_id(s_id)
-            if not spot_details:
-                error_messages.append(f"Spot com ID {s_id} não encontrado.")
+        # Definir o início e fim do dia em UTC
+        start_utc = datetime.datetime.combine(base_date, datetime.time.min).replace(tzinfo=datetime.timezone.utc)
+        end_utc = datetime.datetime.combine(base_date, datetime.time.max).replace(tzinfo=datetime.timezone.utc)
+
+        for spot_id in spot_ids:
+            spot = get_spot_by_id(spot_id)
+            if not spot:
+                error_messages.append(f"Spot com ID {spot_id} não encontrado.")
                 has_errors = True
                 continue
+            
+            # Ajustar timezone se necessário para cálculos locais (aqui estamos usando UTC para DB queries)
+            # spot_timezone = spot.get('timezone', 'UTC') # Se você tiver timezone na tabela spots
 
-            spot_name = spot_details['spot_name']
-            spot_timezone = spot_details['timezone']
-
-            forecasts = get_forecasts_from_db(s_id, start_utc, end_utc)
-            tides = get_tides_forecast_from_db(s_id, start_utc, end_utc)
+            forecasts = get_forecasts_from_db(spot_id, start_utc, end_utc)
+            tides_extremes = get_tides_forecast_from_db(spot_id, start_utc, end_utc)
 
             if not forecasts:
-                error_messages.append(f"Nenhum dado de previsão para o spot {spot_name} (ID: {s_id}) no dia {base_date.format('YYYY-MM-DD')}.")
+                error_messages.append(f"Previsões não encontradas para o spot {spot_id} na data {base_date.isoformat()}.")
                 has_errors = True
                 continue
 
-            for forecast in forecasts:
-                timestamp_utc = forecast['timestamp_utc']
-                sea_level_sg = forecast.get('sea_level_sg')
-                tide_phase = determine_tide_phase(timestamp_utc, sea_level_sg, tides)
-
-                local_time = arrow.get(timestamp_utc).to(spot_timezone).format('YYYY-MM-DD HH:mm:ss ZZ')
-
-                flat_forecast_entries.append({
-                    **forecast,
+            for forecast_entry in forecasts:
+                # Determinar a fase da maré para cada entrada de previsão
+                tide_phase = determine_tide_phase(forecast_entry['timestamp_utc'], tides_extremes)
+                
+                # Adicionar os dados do spot e da maré à entrada da previsão
+                entry_with_spot_and_tide = {
+                    "spot_id": spot_id,
+                    "spot_name": spot['spot_name'],
+                    "latitude": spot['latitude'],
+                    "longitude": spot['longitude'],
+                    "timezone": spot['timezone'], # Assumindo que timezone está na tabela spots
                     "tide_phase": tide_phase,
-                    "local_time": local_time,
-                    "spot_id": s_id,
-                    "spot_name": spot_name,
-                    "timezone": spot_timezone,
-                    "date": base_date.format('YYYY-MM-DD')
-                })
+                    **forecast_entry # Adiciona todas as chaves/valores da previsão
+                }
+                flat_forecast_entries.append(entry_with_spot_and_tide)
 
     if has_errors:
-        return jsonify({"errors": error_messages, "forecast_data": flat_forecast_entries}), 404
-    else:
-        return jsonify(flat_forecast_entries), 200
+        return jsonify({"message": "Alguns dados não puderam ser recuperados.", "errors": error_messages, "data": flat_forecast_entries}), 207 # Partial Content
+    
+    return jsonify(flat_forecast_entries), 200

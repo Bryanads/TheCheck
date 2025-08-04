@@ -28,6 +28,16 @@
             "console": "integratedTerminal",
             "justMyCode": true,
             "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Python: fetch_and_insert_all (Module)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "src.forecast.fetch_and_insert_all",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "cwd": "${workspaceFolder}"
         }
+
     ]
 }

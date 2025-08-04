@@ -1,6 +1,7 @@
-# TheCheck/app.py
 import sys
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # Adiciona o diretório 'src' ao PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))

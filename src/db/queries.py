@@ -1,25 +1,10 @@
-import arrow
+import os
 import datetime
+import psycopg2
 from psycopg2 import sql
+from psycopg2.extras import RealDictCursor 
 from src.db.connection import get_db_connection, close_db_connection
 
-
-def _fetch_results_as_dict(cursor, fetch_method='all'):
-    """
-    Busca resultados de um cursor e os formata como uma lista de dicionários (ou um único dicionário),
-    com as chaves em snake_case.
-    """
-    columns = [desc.name for desc in cursor.description]
-
-    if fetch_method == 'one':
-        row = cursor.fetchone()
-        if not row:
-            return None
-        return dict(zip(columns, row))
-    elif fetch_method == 'all':
-        rows = cursor.fetchall()
-        return [dict(zip(columns, row)) for row in rows]
-    return []
 
 # --- Funções de Escrita de Dados (INSERT/UPDATE) ---
 
@@ -112,7 +97,8 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
     print(f"Starting insertion/update of {len(forecast_data)} hourly forecasts...")
     for entry in forecast_data:
         # Convert timestamp string to datetime object (UTC timezone from StormGlass)
-        timestamp_utc = arrow.get(entry['time']).to('utc').datetime.replace(tzinfo=datetime.timezone.utc)
+        timestamp_utc = datetime.datetime.fromisoformat(entry['time'])
+
         # As chaves de entrada do 'entry' permanecem em camelCase (vindo da API externa)
         # mas são mapeadas para as colunas snake_case do banco de dados.
         values_to_insert = (
@@ -161,7 +147,7 @@ def insert_extreme_tides_data(cursor, spot_id, extremes_data):
     """)
     print(f"Starting insertion/update of {len(extremes_data)} tide extremes...")
     for extreme in extremes_data:
-        timestamp_utc = arrow.get(extreme['time']).to('utc').datetime
+        timestamp_utc = datetime.datetime.fromisoformat(extreme['time'].replace('Z', '+00:00')).replace(tzinfo=datetime.timezone.utc)
         tide_type = extreme['type']
         tide_height = extreme.get('height')
 
@@ -185,16 +171,12 @@ def get_all_spots():
         conn = get_db_connection()
         if conn is None:
             raise Exception("Could not establish database connection.")
-        cur = conn.cursor()
-
+        cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
         cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots ORDER BY spot_id;")
-
-        spots = _fetch_results_as_dict(cur, fetch_method='all')
-
+        spots = cur.fetchall()
         if not spots:
             print("No spots found in the database. Please add spots.")
             return []
-
         return spots
     except Exception as e:
         print(f"Error loading spots from the database: {e}")
@@ -213,25 +195,126 @@ def get_spot_by_id(spot_id):
         conn = get_db_connection()
         if conn is None:
             return None
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
         cur.execute("SELECT spot_id, spot_name, latitude, longitude, timezone FROM spots WHERE spot_id = %s;", (spot_id,))
-
-        spot = _fetch_results_as_dict(cur, fetch_method='one')
-
-        if not spot:
-            print(f"No spot found with ID {spot_id}.")
+        spot = cur.fetchone()
         return spot
     except Exception as e:
-        print(f"Error fetching spot details for ID {spot_id}: {e}")
+        print(f"Error fetching spot by ID {spot_id}: {e}")
         return None
     finally:
         close_db_connection(conn, cur)
 
-def get_user_surf_level(user_id):
+def get_forecasts_from_db(spot_id, start_utc, end_utc):
     """
-    Fetches the surf level for a given user.
-    Assumes 'surf_level' column is directly in the 'users' table.
-    Returns a string or None.
+    Fetches forecast data for a specific spot within a given UTC time range.
+    Returns a list of dictionaries with forecast entries.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return []
+        cur = conn.cursor(cursor_factory=RealDictCursor) 
+        query = """
+        SELECT
+            timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
+            swell_height_sg, swell_direction_sg, swell_period_sg,
+            secondary_swell_height_sg, secondary_swell_direction_sg, secondary_swell_period_sg,
+            wind_speed_sg, wind_direction_sg, water_temperature_sg, air_temperature_sg,
+            current_speed_sg, current_direction_sg, sea_level_sg
+        FROM forecasts
+        WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
+        ORDER BY timestamp_utc;
+        """
+        cur.execute(query, (spot_id, start_utc, end_utc))
+        forecasts = cur.fetchall()
+        return forecasts
+    except Exception as e:
+        print(f"Error fetching forecasts for spot {spot_id}: {e}")
+        return []
+    finally:
+        close_db_connection(conn, cur)
+
+def get_tides_forecast_from_db(spot_id, start_utc, end_utc):
+    """
+    Fetches tide forecast data for a specific spot within a given UTC time range.
+    Returns a list of dictionaries with tide entries.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return []
+        cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
+        query = """
+        SELECT
+            timestamp_utc, tide_type, height
+        FROM tides_forecast
+        WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
+        ORDER BY timestamp_utc;
+        """
+        cur.execute(query, (spot_id, start_utc, end_utc))
+        tides = cur.fetchall()
+        return tides
+    except Exception as e:
+        print(f"Error fetching tides for spot {spot_id}: {e}")
+        return []
+    finally:
+        close_db_connection(conn, cur)
+
+# --- Funções de Usuário ---
+
+def create_user(name, email, password_hash, surf_level, goofy_regular_stance,
+                preferred_wave_direction, bio, profile_picture_url):
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+        query = """
+        INSERT INTO users (name, email, password_hash, surf_level, goofy_regular_stance,
+                           preferred_wave_direction, bio, profile_picture_url)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING user_id;
+        """
+        cur.execute(query, (name, email, password_hash, surf_level, goofy_regular_stance,
+                           preferred_wave_direction, bio, profile_picture_url))
+        user_id = cur.fetchone()[0]
+        conn.commit()
+        return user_id
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        close_db_connection(conn, cur)
+
+def get_user_by_email(email):
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return None
+        cur = conn.cursor(cursor_factory=RealDictCursor) 
+        query = "SELECT * FROM users WHERE email = %s;"
+        cur.execute(query, (email,))
+        user = cur.fetchone()
+        return user
+    except Exception as e:
+        raise e
+    finally:
+        close_db_connection(conn, cur)
+
+def get_user_by_id(user_id):
+    """
+    Fetches user data by user_id.
+    Returns a dictionary with keys in snake_case.
     """
     conn = None
     cur = None
@@ -239,162 +322,157 @@ def get_user_surf_level(user_id):
         conn = get_db_connection()
         if conn is None:
             return None
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = "SELECT user_id, name, email, password_hash, surf_level, goofy_regular_stance, preferred_wave_direction, bio, profile_picture_url, registration_timestamp, last_login_timestamp FROM users WHERE user_id = %s;"
+        cur.execute(query, (user_id,))
+        user = cur.fetchone()
+
+        return user
+    except Exception as e:
+        print(f"Error fetching user by ID {user_id}: {e}") # Adicionar log para depuração
+        return None
+    finally:
+        close_db_connection(conn, cur)
+
+def update_user_last_login(user_id):
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
         cur = conn.cursor()
-        cur.execute("SELECT surf_level FROM users WHERE user_id = %s;", (user_id,))
+        query = """
+        UPDATE users
+        SET last_login_timestamp = NOW()
+        WHERE user_id = %s;
+        """
+        cur.execute(query, (str(user_id),))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        close_db_connection(conn, cur)
 
-        result = cur.fetchone()
+def update_user_profile(user_id, updates: dict):
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+        
+        set_clauses = []
+        values = []
+        for key, value in updates.items():
+            set_clauses.append(f"{key} = %s")
+            values.append(value)
+        
+        if not set_clauses:
+            return # Nada para atualizar
 
-        if result:
-            return result[0]
-        else:
-            print(f"User with ID {user_id} not found or no surf level set.")
+        query = sql.SQL("UPDATE users SET {} WHERE user_id = %s;").format(
+            sql.SQL(", ").join(map(sql.Identifier, set_clauses)) # Não, isso não está certo.
+        )
+        # Correção para a query de update:
+        query_parts = []
+        values_for_query = []
+        for key, value in updates.items():
+            query_parts.append(f"{key} = %s")
+            values_for_query.append(value)
+        
+        query_sql = f"UPDATE users SET {', '.join(query_parts)} WHERE user_id = %s;"
+        values_for_query.append(str(user_id)) # Adiciona o user_id no final dos valores
+        
+        cur.execute(query_sql, tuple(values_for_query))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
+    finally:
+        close_db_connection(conn, cur)
+
+def get_user_surf_level(user_id):
+    """
+    Recupera o nível de surf de um usuário pelo seu ID.
+    Retorna o nível de surf como string ou None se não encontrado.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
             return None
+        cur = conn.cursor() # Não precisa de RealDictCursor para uma única coluna
+        query = "SELECT surf_level FROM users WHERE user_id = %s;"
+        cur.execute(query, (str(user_id),))
+        result = cur.fetchone()
+        return result[0] if result else None
     except Exception as e:
         print(f"Error fetching surf level for user {user_id}: {e}")
         return None
     finally:
         close_db_connection(conn, cur)
 
-def get_spot_preferences(spot_id, user_id=None, surf_level=None):
+def get_spot_preferences(user_id, spot_id, preference_type='model'):
     """
-    Fetches preferences for a given spot. Prioritizes user-specific preferences,
-    falls back to surf_level preferences if user_id is provided and no specific
-    user preference is found for the spot.
-
-    Returns:
-        dict: A dictionary of preferences for the spot, with keys in snake_case.
-              Returns None if no preferences are found for the given criteria.
+    Recupera as preferências de um spot para um usuário,
+    podendo ser do modelo ('model') ou manual ('user').
+    Retorna um dicionário com as preferências ou None.
     """
     conn = None
     cur = None
-    preferences = None
     try:
         conn = get_db_connection()
         if conn is None:
             return None
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
+        
+        if preference_type == 'model':
+            table_name = "model_spot_preferences"
+        elif preference_type == 'user':
+            table_name = "user_spot_preferences"
+        else:
+            raise ValueError("preference_type deve ser 'model' ou 'user'.")
 
-        # 1. Tenta obter as preferências específicas do usuário primeiro
-        if user_id:
-            query = """
-                SELECT
-                    min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    min_wave_period, max_wave_period, ideal_wave_period,
-                    min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
-                    min_swell_period, max_swell_period, ideal_swell_period,
-                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period,
-                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction,
-                    ideal_tide_type,
-                    min_sea_level, max_sea_level, ideal_sea_level,
-                    ideal_water_temperature,
-                    ideal_air_temperature,
-                    ideal_current_speed, preferred_current_direction,
-                    additional_considerations
-                FROM user_spot_preferences
-                WHERE user_id = %s AND spot_id = %s;
-            """
-            cur.execute(query, (user_id, spot_id))
-            preferences = _fetch_results_as_dict(cur, fetch_method='one')
-
-            if preferences:
-                print(f"Found user-specific preferences for spot {spot_id} and user {user_id}.")
-                return preferences
-
-        # 2. Se não houver preferências específicas do usuário ou user_id, volta para as preferências de nível de surf
-        if surf_level:
-            query = """
-                SELECT
-                    min_wave_height, max_wave_height, ideal_wave_height, preferred_wave_direction,
-                    min_wave_period, max_wave_period, ideal_wave_period,
-                    min_swell_height, max_swell_height, ideal_swell_height, preferred_swell_direction,
-                    min_swell_period, max_swell_period, ideal_swell_period,
-                    ideal_secondary_swell_height, preferred_secondary_swell_direction, ideal_secondary_swell_period,
-                    min_wind_speed, max_wind_speed, ideal_wind_speed, preferred_wind_direction,
-                    ideal_tide_type,
-                    min_sea_level, max_sea_level, ideal_sea_level,
-                    ideal_water_temperature,
-                    ideal_air_temperature,
-                    ideal_current_speed, preferred_current_direction,
-                    additional_considerations
-                FROM level_spot_preferences
-                WHERE surf_level = %s AND spot_id = %s;
-            """
-            cur.execute(query, (surf_level, spot_id))
-            preferences = _fetch_results_as_dict(cur, fetch_method='one')
-
-            if preferences:
-                print(f"Found level-specific preferences for spot {spot_id} and level '{surf_level}'.")
-                return preferences
-
-        print(f"No preferences found for spot {spot_id} (user: {user_id}, level: {surf_level}).")
-        return None
-
+        query = sql.SQL("SELECT * FROM {} WHERE user_id = %s AND spot_id = %s;").format(
+            sql.Identifier(table_name)
+        )
+        cur.execute(query, (str(user_id), spot_id))
+        preferences = cur.fetchone()
+        return preferences
     except Exception as e:
-        print(f"Error fetching preferences for spot {spot_id}: {e}")
+        print(f"Error fetching {preference_type} preferences for user {user_id} and spot {spot_id}: {e}")
         return None
     finally:
         close_db_connection(conn, cur)
 
-def get_forecasts_from_db(spot_id, start_time_utc, end_time_utc):
+def get_level_spot_preferences(surf_level, spot_id):
     """
-    Fetches hourly forecast data for a specific spot within a time range.
-    Returns a list of dictionaries with keys in snake_case.
+    Recupera as preferências de um spot para um nível de surf específico.
+    Retorna um dicionário com as preferências ou None.
     """
     conn = None
     cur = None
     try:
         conn = get_db_connection()
         if conn is None:
-            return []
-        cur = conn.cursor()
-
+            return None
+        cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
+        
         query = """
-            SELECT
-                spot_id, timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
-                swell_height_sg, swell_direction_sg, swell_period_sg, secondary_swell_height_sg,
-                secondary_swell_direction_sg, secondary_swell_period_sg, wind_speed_sg,
-                wind_direction_sg, water_temperature_sg, air_temperature_sg, current_speed_sg,
-                current_direction_sg, sea_level_sg
-            FROM forecasts
-            WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
-            ORDER BY timestamp_utc;
+        SELECT * FROM level_spot_preferences
+        WHERE surf_level = %s AND spot_id = %s;
         """
-        cur.execute(query, (spot_id, start_time_utc, end_time_utc))
-
-        forecasts = _fetch_results_as_dict(cur, fetch_method='all')
-        return forecasts
+        cur.execute(query, (surf_level, spot_id))
+        preferences = cur.fetchone()
+        return preferences
     except Exception as e:
-        print(f"Error fetching forecast data for spot {spot_id}: {e}")
-        return []
-    finally:
-        close_db_connection(conn, cur)
-
-def get_tides_forecast_from_db(spot_id, start_time_utc, end_time_utc):
-    """
-    Fetches tide extremes data for a specific spot within a time range.
-    Returns a list of dictionaries with keys in snake_case.
-    """
-    conn = None
-    cur = None
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return []
-        cur = conn.cursor()
-
-        query = """
-            SELECT
-                timestamp_utc, tide_type, height
-            FROM tides_forecast
-            WHERE spot_id = %s AND timestamp_utc BETWEEN %s AND %s
-            ORDER BY timestamp_utc;
-        """
-        cur.execute(query, (spot_id, start_time_utc, end_time_utc))
-
-        tide_extremes = _fetch_results_as_dict(cur, fetch_method='all')
-        return tide_extremes
-    except Exception as e:
-        print(f"Error fetching tide extremes for spot {spot_id}: {e}")
-        return []
+        print(f"Error fetching level spot preferences for level {surf_level} and spot {spot_id}: {e}")
+        return None
     finally:
         close_db_connection(conn, cur)

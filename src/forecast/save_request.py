@@ -3,7 +3,7 @@ import os
 import sys
 from src.db.connection import get_db_connection, close_db_connection
 from src.db.queries import insert_forecast_data, insert_extreme_tides_data
-from src.config import OUTPUT_DIR, REQUEST_DIR, TREATED_DIR
+from src.config import REQUEST_DIR, TREATED_DIR
 from src.forecast.data_processing import merge_stormglass_data, filter_forecast_time
 from src.utils.utils import convert_to_localtime, load_json_data
 
