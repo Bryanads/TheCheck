@@ -206,10 +206,15 @@ Este documento detalha os formatos de requisição e resposta para os endpoints 
         "recommendations": [
             {
                 "detailed_scores": {
-                    "swell_direction_score": "integer",
-                    "tide_score": "integer",
-                    "wave_height_score": "integer",
-                    "wind_score": "integer"
+                "air_temperature_score": "integer",
+                "current_speed_score": "integer",
+                "direction_total_score": "integer",
+                "height_total_score": "integer",
+                "period_total_score": "integer",
+                "secondary_swell_impact_score": "integer",
+                "tide_score": "integer",
+                "water_temperature_score": "integer",
+                "wind_score": "integer"
                 },
                 "forecast_conditions": {
                     "air_temperature_sg": "string",

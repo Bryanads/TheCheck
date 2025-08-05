@@ -8,7 +8,7 @@ from src.db.queries import (
     get_tides_forecast_from_db,
     get_level_spot_preferences 
 )
-from src.recommendation.data_fetcher import determine_tide_phase, get_cardinal_direction
+from src.recommendation.data_fetcher import determine_tide_phase
 from src.recommendation.recommendation_logic import calculate_suitability_score
 from src.utils.utils import convert_to_localtime_string 
 """
