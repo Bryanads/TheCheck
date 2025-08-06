@@ -21,4 +21,8 @@ def create_app():
     from .routes.user_routes import user_bp  
     app.register_blueprint(user_bp)
 
+    # Importa e registra a blueprint de presets de recomendação
+    from .routes.preset_routes import preset_bp 
+    app.register_blueprint(preset_bp)
+
     return app

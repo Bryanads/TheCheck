@@ -79,7 +79,9 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
         sql.SQL("{col} = EXCLUDED.{col}").format(col=sql.Identifier(col))
         for col in cols_to_update
     ]
-    update_set_parts.append(sql.SQL("collection_timestamp = NOW()"))
+    # 'collection_timestamp' is not in the provided schema for forecasts table,
+    # so I'm removing it from the update_set_parts. Assuming `updated_at` should be used.
+    update_set_parts.append(sql.SQL("updated_at = NOW()")) 
 
     update_set = sql.SQL(", ").join(update_set_parts)
 
@@ -143,7 +145,7 @@ def insert_extreme_tides_data(cursor, spot_id, extremes_data):
         ON CONFLICT (spot_id, timestamp_utc) DO UPDATE SET
             tide_type = EXCLUDED.tide_type,
             height = EXCLUDED.height,
-            collection_timestamp = NOW();
+            updated_at = NOW(); -- Changed from collection_timestamp to updated_at
     """)
     print(f"Starting insertion/update of {len(extremes_data)} tide extremes...")
     for extreme in extremes_data:
@@ -365,25 +367,15 @@ def update_user_profile(user_id, updates: dict):
             raise Exception("Could not establish database connection.")
         cur = conn.cursor()
         
-        set_clauses = []
-        values = []
-        for key, value in updates.items():
-            set_clauses.append(f"{key} = %s")
-            values.append(value)
-        
-        if not set_clauses:
-            return # Nada para atualizar
-
-        query = sql.SQL("UPDATE users SET {} WHERE user_id = %s;").format(
-            sql.SQL(", ").join(map(sql.Identifier, set_clauses)) # Não, isso não está certo.
-        )
-        # Correção para a query de update:
         query_parts = []
         values_for_query = []
         for key, value in updates.items():
             query_parts.append(f"{key} = %s")
             values_for_query.append(value)
         
+        if not query_parts: # Alterado de `set_clauses` para `query_parts`
+            return # Nada para atualizar
+
         query_sql = f"UPDATE users SET {', '.join(query_parts)} WHERE user_id = %s;"
         values_for_query.append(str(user_id)) # Adiciona o user_id no final dos valores
         
@@ -474,5 +466,194 @@ def get_level_spot_preferences(surf_level, spot_id):
     except Exception as e:
         print(f"Error fetching level spot preferences for level {surf_level} and spot {spot_id}: {e}")
         return None
+    finally:
+        close_db_connection(conn, cur)
+
+
+# --- Funções para user_recommendation_presets ---
+
+def create_user_recommendation_preset(user_id, preset_name, spot_ids, start_time, end_time, day_offset_default=None, is_default=False):
+    """
+    Cria um novo preset de recomendação para um usuário.
+    day_offset_default agora aceita uma lista de inteiros. Se None, usa o padrão do DB.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+        
+        # Se este preset deve ser o padrão, desativa qualquer outro padrão existente para este usuário
+        if is_default:
+            cur.execute("UPDATE user_recommendation_presets SET is_default = FALSE WHERE user_id = %s AND is_default = TRUE;", (str(user_id),))
+
+        # Ajusta day_offset_default para o default do DB se não for fornecido explicitamente
+        # Ou garante que é uma lista para o psycopg2
+        if day_offset_default is None:
+            day_offset_value = None # psycopg2 usará o DEFAULT da coluna
+        elif not isinstance(day_offset_default, list):
+            # Se for um único inteiro (para compatibilidade ou caso de uso), converte para lista
+            day_offset_value = [day_offset_default]
+        else:
+            day_offset_value = day_offset_default
+
+        query = """
+        INSERT INTO user_recommendation_presets (user_id, preset_name, spot_ids, start_time, end_time, day_offset_default, is_default)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        RETURNING preset_id;
+        """
+        cur.execute(query, (str(user_id), preset_name, spot_ids, start_time, end_time, day_offset_value, is_default))
+        preset_id = cur.fetchone()[0]
+        conn.commit()
+        return preset_id
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error creating user recommendation preset: {e}")
+        raise e
+    finally:
+        close_db_connection(conn, cur)
+
+def get_user_recommendation_presets(user_id):
+    """
+    Recupera todos os presets de recomendação de um usuário.
+    Retorna uma lista de dicionários.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return []
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = "SELECT * FROM user_recommendation_presets WHERE user_id = %s AND is_active = TRUE ORDER BY preset_name;"
+        cur.execute(query, (str(user_id),))
+        presets = cur.fetchall()
+        return presets
+    except Exception as e:
+        print(f"Error fetching user recommendation presets for user {user_id}: {e}")
+        return []
+    finally:
+        close_db_connection(conn, cur)
+
+def get_default_user_recommendation_preset(user_id):
+    """
+    Recupera o preset de recomendação padrão (is_default = TRUE) de um usuário.
+    Retorna um dicionário ou None.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return None
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = "SELECT * FROM user_recommendation_presets WHERE user_id = %s AND is_default = TRUE AND is_active = TRUE;"
+        cur.execute(query, (str(user_id),))
+        preset = cur.fetchone()
+        return preset
+    except Exception as e:
+        print(f"Error fetching default user recommendation preset for user {user_id}: {e}")
+        return None
+    finally:
+        close_db_connection(conn, cur)
+
+def get_user_recommendation_preset_by_id(preset_id, user_id):
+    """
+    Recupera um preset de recomendação específico pelo ID e user_id.
+    Retorna um dicionário ou None.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return None
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        query = "SELECT * FROM user_recommendation_presets WHERE preset_id = %s AND user_id = %s AND is_active = TRUE;"
+        cur.execute(query, (preset_id, str(user_id)))
+        preset = cur.fetchone()
+        return preset
+    except Exception as e:
+        print(f"Error fetching user recommendation preset by ID {preset_id}: {e}")
+        return None
+    finally:
+        close_db_connection(conn, cur)
+
+def update_user_recommendation_preset(preset_id, user_id, updates: dict):
+    """
+    Atualiza um preset de recomendação existente.
+    Permite atualizar nome, spot_ids, horários, day_offset_default (como lista) e is_default.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+        
+        query_parts = []
+        values_for_query = []
+
+        if 'is_default' in updates and updates['is_default']:
+            # Se o preset está sendo definido como padrão, desativa outros padrões
+            cur.execute("UPDATE user_recommendation_presets SET is_default = FALSE WHERE user_id = %s AND is_default = TRUE AND preset_id != %s;", (str(user_id), preset_id))
+
+        for key, value in updates.items():
+            query_parts.append(f"{key} = %s")
+            if key in ['spot_ids', 'day_offset_default']: # Ambos são arrays agora
+                if not isinstance(value, list):
+                    raise ValueError(f"Campo '{key}' deve ser uma lista.")
+                values_for_query.append(value) 
+            elif isinstance(value, datetime.time): # Para start_time/end_time
+                values_for_query.append(value.strftime('%H:%M:%S')) # Formata para string de tempo
+            else:
+                values_for_query.append(value)
+        
+        if not query_parts:
+            return False # Nada para atualizar
+
+        query_sql = f"UPDATE user_recommendation_presets SET {', '.join(query_parts)}, updated_at = NOW() WHERE preset_id = %s AND user_id = %s;"
+        values_for_query.append(preset_id)
+        values_for_query.append(str(user_id))
+        
+        cur.execute(query_sql, tuple(values_for_query))
+        conn.commit()
+        return cur.rowcount > 0 # Retorna True se alguma linha foi afetada
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error updating user recommendation preset {preset_id}: {e}")
+        raise e
+    finally:
+        close_db_connection(conn, cur)
+
+def delete_user_recommendation_preset(preset_id, user_id):
+    """
+    "Soft-deleta" um preset de recomendação, marcando-o como inativo.
+    """
+    conn = None
+    cur = None
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            raise Exception("Could not establish database connection.")
+        cur = conn.cursor()
+        query = """
+        UPDATE user_recommendation_presets
+        SET is_active = FALSE, updated_at = NOW()
+        WHERE preset_id = %s AND user_id = %s;
+        """
+        cur.execute(query, (preset_id, str(user_id)))
+        conn.commit()
+        return cur.rowcount > 0 # Retorna True se alguma linha foi afetada
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        print(f"Error deleting user recommendation preset {preset_id}: {e}")
+        raise e
     finally:
         close_db_connection(conn, cur)
