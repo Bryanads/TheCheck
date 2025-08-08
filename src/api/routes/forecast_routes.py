@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 import datetime
 from src.db.queries import get_spot_by_id, get_forecasts_from_db, get_tides_forecast_from_db
-from src.recommendation.data_fetcher import determine_tide_phase
+from src.utils.utils import determine_tide_phase
 
 """
 Exemplo de requisição para http://127.0.0.1/5000/forecasts
