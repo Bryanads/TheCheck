@@ -97,6 +97,18 @@ def get_cardinal_direction(degrees):
     index = int((degrees + 11.25) / 22.5) % 16
     return directions[index]
 
+def cardinal_to_degrees(cardinal_direction_str):
+    """Converts a cardinal direction string to its numerical degree representation (0-360)."""
+    if cardinal_direction_str is None:
+        return None
+    mapping = {
+        'N': 0, 'NNE': 22.5, 'NE': 45, 'ENE': 67.5,
+        'E': 90, 'ESE': 112.5, 'SE': 135, 'SSE': 157.5,
+        'S': 180, 'SSW': 202.5, 'SW': 225, 'WSW': 247.5,
+        'W': 270, 'WNW': 292.5, 'NW': 315, 'NNW': 337.5
+    }
+    return mapping.get(cardinal_direction_str.upper(), None)
+    
 def determine_tide_phase(current_timestamp, tides_extremes):
     """
     Determines the tide phase (e.g., 'low', 'high', 'rising', 'falling')
