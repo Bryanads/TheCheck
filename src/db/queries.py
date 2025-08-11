@@ -2,7 +2,7 @@ import os
 import datetime
 import psycopg2
 from psycopg2 import sql
-from psycopg2.extras import RealDictCursor 
+from psycopg2.extras import RealDictCursor
 from src.db.connection import get_db_connection, close_db_connection
 
 
@@ -81,7 +81,7 @@ def insert_forecast_data(cursor, spot_id, forecast_data):
     ]
     # 'collection_timestamp' is not in the provided schema for forecasts table,
     # so I'm removing it from the update_set_parts. Assuming `updated_at` should be used.
-    update_set_parts.append(sql.SQL("updated_at = NOW()")) 
+    # REMOVED: update_set_parts.append(sql.SQL("updated_at = NOW()"))
 
     update_set = sql.SQL(", ").join(update_set_parts)
 
@@ -144,8 +144,8 @@ def insert_extreme_tides_data(cursor, spot_id, extremes_data):
         VALUES (%s, %s, %s, %s)
         ON CONFLICT (spot_id, timestamp_utc) DO UPDATE SET
             tide_type = EXCLUDED.tide_type,
-            height = EXCLUDED.height,
-            updated_at = NOW(); -- Changed from collection_timestamp to updated_at
+            height = EXCLUDED.height;
+            -- Removed updated_at as it's not in the provided schema
     """)
     print(f"Starting insertion/update of {len(extremes_data)} tide extremes...")
     for extreme in extremes_data:
@@ -218,7 +218,7 @@ def get_forecasts_from_db(spot_id, start_utc, end_utc):
         conn = get_db_connection()
         if conn is None:
             return []
-        cur = conn.cursor(cursor_factory=RealDictCursor) 
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         query = """
         SELECT
             timestamp_utc, wave_height_sg, wave_direction_sg, wave_period_sg,
@@ -280,12 +280,12 @@ def create_user(name, email, password_hash, surf_level, goofy_regular_stance,
         cur = conn.cursor()
         query = """
         INSERT INTO users (name, email, password_hash, surf_level, goofy_regular_stance,
-                           preferred_wave_direction, bio, profile_picture_url)
+                            preferred_wave_direction, bio, profile_picture_url)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING user_id;
         """
         cur.execute(query, (name, email, password_hash, surf_level, goofy_regular_stance,
-                           preferred_wave_direction, bio, profile_picture_url))
+                            preferred_wave_direction, bio, profile_picture_url))
         user_id = cur.fetchone()[0]
         conn.commit()
         return user_id
@@ -303,7 +303,7 @@ def get_user_by_email(email):
         conn = get_db_connection()
         if conn is None:
             return None
-        cur = conn.cursor(cursor_factory=RealDictCursor) 
+        cur = conn.cursor(cursor_factory=RealDictCursor)
         query = "SELECT * FROM users WHERE email = %s;"
         cur.execute(query, (email,))
         user = cur.fetchone()
@@ -366,19 +366,19 @@ def update_user_profile(user_id, updates: dict):
         if conn is None:
             raise Exception("Could not establish database connection.")
         cur = conn.cursor()
-        
+
         query_parts = []
         values_for_query = []
         for key, value in updates.items():
             query_parts.append(f"{key} = %s")
             values_for_query.append(value)
-        
-        if not query_parts: # Alterado de `set_clauses` para `query_parts`
+
+        if not query_parts:
             return # Nada para atualizar
 
         query_sql = f"UPDATE users SET {', '.join(query_parts)} WHERE user_id = %s;"
         values_for_query.append(str(user_id)) # Adiciona o user_id no final dos valores
-        
+
         cur.execute(query_sql, tuple(values_for_query))
         conn.commit()
     except Exception as e:
@@ -423,7 +423,7 @@ def get_spot_preferences(user_id, spot_id, preference_type='model'):
         if conn is None:
             return None
         cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
-        
+
         if preference_type == 'model':
             table_name = "model_spot_preferences"
         elif preference_type == 'user':
@@ -455,7 +455,7 @@ def get_level_spot_preferences(surf_level, spot_id):
         if conn is None:
             return None
         cur = conn.cursor(cursor_factory=RealDictCursor) # Usando RealDictCursor
-        
+
         query = """
         SELECT * FROM level_spot_preferences
         WHERE surf_level = %s AND spot_id = %s;
@@ -484,7 +484,7 @@ def create_user_recommendation_preset(user_id, preset_name, spot_ids, start_time
         if conn is None:
             raise Exception("Could not establish database connection.")
         cur = conn.cursor()
-        
+
         # Se este preset deve ser o padrão, desativa qualquer outro padrão existente para este usuário
         if is_default:
             cur.execute("UPDATE user_recommendation_presets SET is_default = FALSE WHERE user_id = %s AND is_default = TRUE;", (str(user_id),))
@@ -594,7 +594,7 @@ def update_user_recommendation_preset(preset_id, user_id, updates: dict):
         if conn is None:
             raise Exception("Could not establish database connection.")
         cur = conn.cursor()
-        
+
         query_parts = []
         values_for_query = []
 
@@ -607,19 +607,19 @@ def update_user_recommendation_preset(preset_id, user_id, updates: dict):
             if key in ['spot_ids', 'day_offset_default']: # Ambos são arrays agora
                 if not isinstance(value, list):
                     raise ValueError(f"Campo '{key}' deve ser uma lista.")
-                values_for_query.append(value) 
+                values_for_query.append(value)
             elif isinstance(value, datetime.time): # Para start_time/end_time
                 values_for_query.append(value.strftime('%H:%M:%S')) # Formata para string de tempo
             else:
                 values_for_query.append(value)
-        
+
         if not query_parts:
             return False # Nada para atualizar
 
         query_sql = f"UPDATE user_recommendation_presets SET {', '.join(query_parts)}, updated_at = NOW() WHERE preset_id = %s AND user_id = %s;"
         values_for_query.append(preset_id)
         values_for_query.append(str(user_id))
-        
+
         cur.execute(query_sql, tuple(values_for_query))
         conn.commit()
         return cur.rowcount > 0 # Retorna True se alguma linha foi afetada

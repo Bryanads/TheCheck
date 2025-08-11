@@ -1,3 +1,4 @@
+import numpy as np # Importe numpy aqui
 from flask import Blueprint, request, jsonify
 import datetime 
 from src.db.queries import (
@@ -10,6 +11,20 @@ from src.db.queries import (
 )
 from src.recommendation.recommendation_logic import calculate_suitability_score
 from src.utils.utils import convert_to_localtime_string, determine_tide_phase
+
+# Adicione a função auxiliar para converter tipos NumPy
+def convert_numpy_to_python_types(obj):
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, dict):
+        return {k: convert_numpy_to_python_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_to_python_types(elem) for elem in obj]
+    # Se for um tipo NumPy escalar, converte para tipo Python nativo
+    elif isinstance(obj, (np.integer, np.floating, np.bool_)):
+        return obj.item()
+    return obj
+
 
 recommendation_bp = Blueprint('recommendations', __name__)
 
@@ -151,7 +166,8 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
         
         all_spot_recommendations.append(spot_daily_recommendations)
             
-    return {"recommendations_by_spot": all_spot_recommendations}, 200
+    # Converta para lista Python, se a saída for um np.ndarray
+    return convert_numpy_to_python_types({"recommendations_by_spot": all_spot_recommendations}), 200
 
 
 @recommendation_bp.route('/recommendations', methods=['POST'])

@@ -15,12 +15,25 @@ def calcular_score_tamanho_onda(previsao_onda, tamanho_minimo, tamanho_ideal, ta
     """
 
     previsao_onda = np.asarray(previsao_onda, dtype=float)
+    # Converter explicitamente os parâmetros de entrada para float
+    tamanho_minimo = float(tamanho_minimo)
+    tamanho_ideal = float(tamanho_ideal)
+    tamanho_maximo = float(tamanho_maximo)
+
     score = np.zeros_like(previsao_onda, dtype=float)
 
     ##################################################################################################################
     # Calculo do lado esquerdo (Ondas menores ou iguais ao tamanho ideal):
     mask_left = previsao_onda <= tamanho_ideal
-    k1 = (tamanho_ideal - tamanho_minimo)
+    # Garante que k1 não seja negativo ou cause problemas se tamanho_minimo > tamanho_ideal
+    k1_denom = (tamanho_ideal - tamanho_minimo)
+    if k1_denom <= 0: # Evita divisão por zero ou k1 inválido
+        k1 = 1.0 # Valor padrão se não houver faixa válida
+    else:
+        # Ajuste k1 para controlar a queda do score. Um valor maior significa queda mais rápida.
+        # k1 = 1.0 / k1_denom # Uma opção linear simples
+        k1 = 2.0 / (k1_denom + 1e-6) # Uma opção com ajuste para evitar divisão por zero e controlar inclinação
+    
     score[mask_left] = np.exp(-k1 * (tamanho_ideal - previsao_onda[mask_left])**2)
     """
     Função exponencial quadrática:
@@ -35,14 +48,6 @@ def calcular_score_tamanho_onda(previsao_onda, tamanho_minimo, tamanho_ideal, ta
     Isso garante que, para valores de tamanho mínimo próximos ao tamanho ideal, o score ainda será alto.
     Já para valores de tamanho mínimo muito distantes do tamanho ideal, o score será baixo.
     """
-    
-    ##################################################################################################################
-   
-    # Cálculo do lado esquerdo (Ondas menores ou iguais ao tamanho ideal):
-
-    
-    k1 = (tamanho_ideal - tamanho_minimo)
-    score[mask_left] = np.exp(-k1 * (tamanho_ideal - previsao_onda[mask_left])**2)
     
     ##################################################################################################################
     # Cálculo do lado direito (Ondas maiores que o tamanho ideal): 
@@ -77,8 +82,8 @@ def calcular_score_direcao_onda(previsao_direcao, direcao_ideal):
     """
     
     previsao_direcao = np.asarray(previsao_direcao, dtype=float)
-    direcao_ideal = np.asarray(direcao_ideal, dtype=float)
-
+    direcao_ideal = float(direcao_ideal) # Converter para float
+    
     # Calcula a diferença angular
     diferenca = np.abs(previsao_direcao - direcao_ideal) % 360
     diferenca = np.minimum(diferenca, 360 - diferenca)  # Considera o menor ângulo
@@ -102,7 +107,8 @@ def calcular_score_periodo_onda(previsao_periodo, periodo_ideal):
     """
     
     previsao_periodo = np.asarray(previsao_periodo, dtype=float)
-    score = np.exp(-((previsao_periodo - periodo_ideal) ** 2) / (periodo_ideal)) 
+    periodo_ideal = float(periodo_ideal) # Converter para float
+    score = np.exp(-((previsao_periodo - periodo_ideal) ** 2) / (periodo_ideal + 1e-6)) # Adicionado 1e-6 para evitar divisão por zero
     return score
 
 def calcular_impacto_swell_secundario(
@@ -129,7 +135,7 @@ def calcular_impacto_swell_secundario(
         float ou array-like: O score de impacto (-1 a 1).
     """
 
-    # Garante que todas as entradas são arrays numpy para cálculos vetorizados
+    # Garante que todas as entradas são arrays numpy para cálculos vetorizados e convertidas para float
     previsao_swell_secundario_tamanho = np.asarray(previsao_swell_secundario_tamanho, dtype=float)
     previsao_swell_secundario_periodo = np.asarray(previsao_swell_secundario_periodo, dtype=float)
     previsao_swell_secundario_direcao = np.asarray(previsao_swell_secundario_direcao, dtype=float)
