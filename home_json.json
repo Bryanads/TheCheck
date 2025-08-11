@@ -1,0 +1,310 @@
+[
+    [
+        {
+            "day_offset": 1,
+            "preferences_used_for_spot": {
+                "created_at": "Tue, 05 Aug 2025 01:46:23 GMT",
+                "ideal_air_temperature": "26.00",
+                "ideal_sea_level": "1.00",
+                "ideal_swell_height": "1.20",
+                "ideal_swell_period": "10.00",
+                "ideal_tide_type": "rising",
+                "ideal_water_temperature": "24.00",
+                "ideal_wave_height": "1.20",
+                "ideal_wave_period": "10.00",
+                "ideal_wind_speed": "3.00",
+                "is_deleted": false,
+                "level_preference_id": 9,
+                "max_sea_level": "1.50",
+                "max_swell_height": "1.80",
+                "max_swell_period": "12.00",
+                "max_wave_height": "1.80",
+                "max_wave_period": "12.00",
+                "max_wind_speed": "7.00",
+                "min_sea_level": "0.50",
+                "min_swell_height": "0.80",
+                "min_swell_period": "8.00",
+                "min_wave_height": "0.80",
+                "min_wave_period": "8.00",
+                "min_wind_speed": "0.00",
+                "preferred_swell_direction": "SE",
+                "preferred_wave_direction": "SE",
+                "preferred_wind_direction": "NE",
+                "spot_id": 1,
+                "surf_level": "intermediario",
+                "updated_at": "Tue, 05 Aug 2025 01:46:23 GMT"
+            },
+            "recommendations": [
+                {
+                    "detailed_scores": {
+                        "air_temperature_score": 0.027885066063564418,
+                        "secondary_swell_impact": 0.5452040543811139,
+                        "swell_direction_score": 1.6570858371476337e-07,
+                        "swell_period_score": 0.9885065612176746,
+                        "tide_score": 0.10559507455026418,
+                        "water_temperature_score": 0.5031877087835759,
+                        "wave_height_score": 0.9963502567163844,
+                        "wind_score": 0.3919131656669906
+                    },
+                    "forecast_conditions": {
+                        "air_temperature_sg": "16.54",
+                        "current_direction_sg": "277.45",
+                        "current_speed_sg": "0.04",
+                        "sea_level_sg": "0.45",
+                        "secondary_swell_direction_sg": "174.05",
+                        "secondary_swell_height_sg": "0.17",
+                        "secondary_swell_period_sg": "17.24",
+                        "swell_direction_sg": "177.81",
+                        "swell_height_sg": "1.30",
+                        "swell_period_sg": "10.34",
+                        "tide_phase": "falling",
+                        "water_temperature_sg": "21.07",
+                        "wave_direction_sg": "184.36",
+                        "wave_height_sg": "1.27",
+                        "wave_period_sg": "6.02",
+                        "wind_direction_sg": "275.21",
+                        "wind_speed_sg": "3.33"
+                    },
+                    "spot_characteristics": {
+                        "bottom_type": null,
+                        "coast_orientation": null,
+                        "general_characteristics": null
+                    },
+                    "suitability_score": 0.6365339497070154,
+                    "timestamp_utc": "2025-08-12T08:00:00+00:00"
+                }
+            ],
+            "spot_name": "Praia Da Barra - Posto 4"
+        },
+        {
+            "day_offset": 2,
+            "preferences_used_for_spot": {
+                "created_at": "Tue, 05 Aug 2025 01:46:23 GMT",
+                "ideal_air_temperature": "26.00",
+                "ideal_sea_level": "1.00",
+                "ideal_swell_height": "1.20",
+                "ideal_swell_period": "10.00",
+                "ideal_tide_type": "rising",
+                "ideal_water_temperature": "24.00",
+                "ideal_wave_height": "1.20",
+                "ideal_wave_period": "10.00",
+                "ideal_wind_speed": "3.00",
+                "is_deleted": false,
+                "level_preference_id": 9,
+                "max_sea_level": "1.50",
+                "max_swell_height": "1.80",
+                "max_swell_period": "12.00",
+                "max_wave_height": "1.80",
+                "max_wave_period": "12.00",
+                "max_wind_speed": "7.00",
+                "min_sea_level": "0.50",
+                "min_swell_height": "0.80",
+                "min_swell_period": "8.00",
+                "min_wave_height": "0.80",
+                "min_wave_period": "8.00",
+                "min_wind_speed": "0.00",
+                "preferred_swell_direction": "SE",
+                "preferred_wave_direction": "SE",
+                "preferred_wind_direction": "NE",
+                "spot_id": 1,
+                "surf_level": "intermediario",
+                "updated_at": "Tue, 05 Aug 2025 01:46:23 GMT"
+            },
+            "recommendations": [
+                {
+                    "detailed_scores": {
+                        "air_temperature_score": 0.03590150723885506,
+                        "secondary_swell_impact": 0.6978823237884507,
+                        "swell_direction_score": 3.7738244676529844e-07,
+                        "swell_period_score": 0.9102008490427786,
+                        "tide_score": 0.06566799889911905,
+                        "water_temperature_score": 0.5079115300576232,
+                        "wave_height_score": 0.5992965549427202,
+                        "wind_score": 0.9716666427777858
+                    },
+                    "forecast_conditions": {
+                        "air_temperature_sg": "16.88",
+                        "current_direction_sg": "83.91",
+                        "current_speed_sg": "0.08",
+                        "sea_level_sg": "0.50",
+                        "secondary_swell_direction_sg": "173.26",
+                        "secondary_swell_height_sg": "0.21",
+                        "secondary_swell_period_sg": "16.97",
+                        "swell_direction_sg": "173.06",
+                        "swell_height_sg": "0.93",
+                        "swell_period_sg": "9.03",
+                        "tide_phase": "falling",
+                        "water_temperature_sg": "21.09",
+                        "wave_direction_sg": "178.98",
+                        "wave_height_sg": "0.88",
+                        "wave_period_sg": "5.51",
+                        "wind_direction_sg": "357.74",
+                        "wind_speed_sg": "2.15"
+                    },
+                    "spot_characteristics": {
+                        "bottom_type": null,
+                        "coast_orientation": null,
+                        "general_characteristics": null
+                    },
+                    "suitability_score": 0.597659939915186,
+                    "timestamp_utc": "2025-08-13T08:00:00+00:00"
+                }
+            ],
+            "spot_name": "Praia Da Barra - Posto 4"
+        }
+    ],
+    [
+        {
+            "day_offset": 1,
+            "preferences_used_for_spot": {
+                "created_at": "Tue, 05 Aug 2025 01:46:23 GMT",
+                "ideal_air_temperature": "25.00",
+                "ideal_sea_level": "0.50",
+                "ideal_swell_height": "1.50",
+                "ideal_swell_period": "11.00",
+                "ideal_tide_type": "low",
+                "ideal_water_temperature": "23.00",
+                "ideal_wave_height": "1.50",
+                "ideal_wave_period": "11.00",
+                "ideal_wind_speed": "4.00",
+                "is_deleted": false,
+                "level_preference_id": 11,
+                "max_sea_level": "1.00",
+                "max_swell_height": "2.00",
+                "max_swell_period": "14.00",
+                "max_wave_height": "2.00",
+                "max_wave_period": "14.00",
+                "max_wind_speed": "8.00",
+                "min_sea_level": "0.00",
+                "min_swell_height": "0.90",
+                "min_swell_period": "9.00",
+                "min_wave_height": "0.90",
+                "min_wave_period": "9.00",
+                "min_wind_speed": "0.00",
+                "preferred_swell_direction": "S",
+                "preferred_wave_direction": "S",
+                "preferred_wind_direction": "NW",
+                "spot_id": 2,
+                "surf_level": "intermediario",
+                "updated_at": "Tue, 05 Aug 2025 01:46:23 GMT"
+            },
+            "recommendations": [
+                {
+                    "detailed_scores": {
+                        "air_temperature_score": 0.0224895617418856,
+                        "secondary_swell_impact": 0.6802599039157178,
+                        "swell_direction_score": 1.6570858371476337e-07,
+                        "swell_period_score": 0.40110329930915734,
+                        "tide_score": 0.10559507455026418,
+                        "water_temperature_score": 0.7003549507195691,
+                        "wave_height_score": 0.8383387369719998,
+                        "wind_score": 0.5365913016108602
+                    },
+                    "forecast_conditions": {
+                        "air_temperature_sg": "15.26",
+                        "current_direction_sg": "271.68",
+                        "current_speed_sg": "0.02",
+                        "sea_level_sg": "0.45",
+                        "secondary_swell_direction_sg": "174.05",
+                        "secondary_swell_height_sg": "0.17",
+                        "secondary_swell_period_sg": "17.24",
+                        "swell_direction_sg": "177.81",
+                        "swell_height_sg": "1.95",
+                        "swell_period_sg": "7.83",
+                        "tide_phase": "falling",
+                        "water_temperature_sg": "20.89",
+                        "wave_direction_sg": "184.36",
+                        "wave_height_sg": "1.27",
+                        "wave_period_sg": "6.02",
+                        "wind_direction_sg": "290.75",
+                        "wind_speed_sg": "2.13"
+                    },
+                    "spot_characteristics": {
+                        "bottom_type": null,
+                        "coast_orientation": null,
+                        "general_characteristics": null
+                    },
+                    "suitability_score": 0.4948209412550329,
+                    "timestamp_utc": "2025-08-12T08:00:00+00:00"
+                }
+            ],
+            "spot_name": "Praia Da Reserva - Ilha 19"
+        },
+        {
+            "day_offset": 2,
+            "preferences_used_for_spot": {
+                "created_at": "Tue, 05 Aug 2025 01:46:23 GMT",
+                "ideal_air_temperature": "25.00",
+                "ideal_sea_level": "0.50",
+                "ideal_swell_height": "1.50",
+                "ideal_swell_period": "11.00",
+                "ideal_tide_type": "low",
+                "ideal_water_temperature": "23.00",
+                "ideal_wave_height": "1.50",
+                "ideal_wave_period": "11.00",
+                "ideal_wind_speed": "4.00",
+                "is_deleted": false,
+                "level_preference_id": 11,
+                "max_sea_level": "1.00",
+                "max_swell_height": "2.00",
+                "max_swell_period": "14.00",
+                "max_wave_height": "2.00",
+                "max_wave_period": "14.00",
+                "max_wind_speed": "8.00",
+                "min_sea_level": "0.00",
+                "min_swell_height": "0.90",
+                "min_swell_period": "9.00",
+                "min_wave_height": "0.90",
+                "min_wave_period": "9.00",
+                "min_wind_speed": "0.00",
+                "preferred_swell_direction": "S",
+                "preferred_wave_direction": "S",
+                "preferred_wind_direction": "NW",
+                "spot_id": 2,
+                "surf_level": "intermediario",
+                "updated_at": "Tue, 05 Aug 2025 01:46:23 GMT"
+            },
+            "recommendations": [
+                {
+                    "detailed_scores": {
+                        "air_temperature_score": 0.022842418751462045,
+                        "secondary_swell_impact": 0.7977741092536513,
+                        "swell_direction_score": 3.7738244676529844e-07,
+                        "swell_period_score": 0.28229321579039757,
+                        "tide_score": 0.06566799889911905,
+                        "water_temperature_score": 0.7121348424769482,
+                        "wave_height_score": 0.27766742405964023,
+                        "wind_score": 0.947749988062503
+                    },
+                    "forecast_conditions": {
+                        "air_temperature_sg": "15.28",
+                        "current_direction_sg": "87.46",
+                        "current_speed_sg": "0.03",
+                        "sea_level_sg": "0.50",
+                        "secondary_swell_direction_sg": "173.26",
+                        "secondary_swell_height_sg": "0.21",
+                        "secondary_swell_period_sg": "16.97",
+                        "swell_direction_sg": "173.06",
+                        "swell_height_sg": "1.32",
+                        "swell_period_sg": "7.27",
+                        "tide_phase": "falling",
+                        "water_temperature_sg": "20.94",
+                        "wave_direction_sg": "178.98",
+                        "wave_height_sg": "0.88",
+                        "wave_period_sg": "5.51",
+                        "wind_direction_sg": "4.10",
+                        "wind_speed_sg": "1.91"
+                    },
+                    "spot_characteristics": {
+                        "bottom_type": null,
+                        "coast_orientation": null,
+                        "general_characteristics": null
+                    },
+                    "suitability_score": 0.3520168346432444,
+                    "timestamp_utc": "2025-08-13T08:00:00+00:00"
+                }
+            ],
+            "spot_name": "Praia Da Reserva - Ilha 19"
+        }
+    ]
+]

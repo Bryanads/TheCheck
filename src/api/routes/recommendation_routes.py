@@ -1,4 +1,4 @@
-import numpy as np # Importe numpy aqui
+import numpy as np
 from flask import Blueprint, request, jsonify
 import datetime 
 from src.db.queries import (
@@ -60,12 +60,19 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
         spot = get_spot_by_id(spot_id)
         if not spot:
             print(f"Aviso: Spot com ID {spot_id} não encontrado, pulando.")
-            # ... (adiciona erro ao resultado e continua) ...
-            spot_daily_recommendations = [{"spot_name": f"Spot ID {spot_id}", "spot_id": spot_id, "error": f"Spot com ID {spot_id} não encontrado."}]
-            all_spot_recommendations.append(spot_daily_recommendations)
+            all_spot_recommendations.append({
+                "spot_name": f"Spot ID {spot_id}",
+                "spot_id": spot_id,
+                "error": f"Spot com ID {spot_id} não encontrado."
+            })
             continue
 
-        spot_daily_recommendations = []
+        spot_recommendations_data = {
+            "spot_name": spot['spot_name'],
+            "spot_id": spot_id,
+            "preferences_used_for_spot": {},
+            "day_offsets": []
+        }
         
         spot_preferences = get_spot_preferences(user_id, spot_id, preference_type='user')
         if not spot_preferences:
@@ -74,14 +81,12 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
             spot_preferences = get_level_spot_preferences(surf_level, spot_id)
             if not spot_preferences:
                 print(f"Aviso: Preferências não encontradas para o nível '{surf_level}' no spot {spot_id}, pulando.")
-                spot_daily_recommendations.append({
-                    "spot_name": spot['spot_name'],
-                    "spot_id": spot_id,
-                    "error": f"Nenhuma preferência configurada para o spot {spot['spot_name']} para este usuário/nível."
-                })
-                all_spot_recommendations.append(spot_daily_recommendations)
+                spot_recommendations_data["error"] = f"Nenhuma preferência configurada para o spot {spot['spot_name']} para este usuário/nível."
+                all_spot_recommendations.append(spot_recommendations_data)
                 continue
         
+        spot_recommendations_data["preferences_used_for_spot"] = spot_preferences
+
         for day_offset_single in day_offsets:
             base_date_for_offset = datetime.datetime.utcnow().date() + datetime.timedelta(days=day_offset_single)
 
@@ -93,13 +98,15 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
             forecasts = get_forecasts_from_db(spot_id, day_start, day_end)
             tides_extremes = get_tides_forecast_from_db(spot_id, day_start, day_end)
 
+            day_offset_data = {
+                "day_offset": day_offset_single,
+                "recommendations": []
+            }
+
             if not forecasts:
                 print(f"Aviso: Previsões não encontradas para o spot {spot_id} no dia {base_date_for_offset.isoformat()}, pulando este dia.")
-                spot_daily_recommendations.append({
-                    "day_offset": day_offset_single,
-                    "spot_name": spot['spot_name'],
-                    "error": f"Previsões não encontradas para o spot {spot['spot_name']} para o dia {day_offset_single}."
-                })
+                day_offset_data["error"] = f"Previsões não encontradas para o spot {spot['spot_name']} para o dia {day_offset_single}."
+                spot_recommendations_data["day_offsets"].append(day_offset_data)
                 continue
             
             filtered_forecasts = [
@@ -109,11 +116,8 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
 
             if not filtered_forecasts:
                 print(f"Aviso: Nenhuma previsão encontrada para o spot {spot_id} entre {start_time_str} e {end_time_str} para o dia {day_offset_single}, pulando este dia.")
-                spot_daily_recommendations.append({
-                    "day_offset": day_offset_single,
-                    "spot_name": spot['spot_name'],
-                    "error": f"Nenhuma previsão encontrada para o spot {spot['spot_name']} entre {start_time_str} e {end_time_str} para o dia {day_offset_single}."
-                })
+                day_offset_data["error"] = f"Nenhuma previsão encontrada para o spot {spot['spot_name']} entre {start_time_str} e {end_time_str} para o dia {day_offset_single}."
+                spot_recommendations_data["day_offsets"].append(day_offset_data)
                 continue
 
             hourly_recommendations_for_day = []
@@ -123,7 +127,6 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
 
                 recommendation_entry = {
                     "timestamp_utc": forecast_entry['timestamp_utc'].isoformat(),
-                    "local_time": convert_to_localtime_string(forecast_entry['timestamp_utc'].isoformat(), spot.get('timezone', 'UTC')),
                     "suitability_score": suitability_score,
                     "detailed_scores": detailed_scores,
                     "forecast_conditions": {
@@ -143,31 +146,23 @@ def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, start_ti
                         "current_speed_sg": forecast_entry.get('current_speed_sg'),
                         "current_direction_sg": forecast_entry.get('current_direction_sg'),
                         "sea_level_sg": forecast_entry.get('sea_level_sg'),
-                    },
-                    "tide_info": {
                         "tide_phase": tide_phase,
-                        "sea_level_sg": forecast_entry.get('sea_level_sg')
                     },
                     "spot_characteristics": {
                         "bottom_type": spot.get('bottom_type'),
                         "coast_orientation": spot.get('coast_orientation'),
                         "general_characteristics": spot.get('general_characteristics')
-                    },
-                    "preferences_used": spot_preferences
+                    }
                 }
                 hourly_recommendations_for_day.append(recommendation_entry)
             
-            spot_daily_recommendations.append({
-                "day_offset": day_offset_single,
-                "spot_name": spot['spot_name'],
-                "recommendations": hourly_recommendations_for_day,
-                "preferences_used_for_spot": spot_preferences
-            })
+            day_offset_data["recommendations"] = hourly_recommendations_for_day
+            spot_recommendations_data["day_offsets"].append(day_offset_data)
         
-        all_spot_recommendations.append(spot_daily_recommendations)
+        all_spot_recommendations.append(spot_recommendations_data)
             
     # Converta para lista Python, se a saída for um np.ndarray
-    return convert_numpy_to_python_types({"recommendations_by_spot": all_spot_recommendations}), 200
+    return convert_numpy_to_python_types(all_spot_recommendations), 200
 
 
 @recommendation_bp.route('/recommendations', methods=['POST'])
