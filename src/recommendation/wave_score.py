@@ -16,7 +16,7 @@ def calcular_score_tamanho_onda(previsao_onda, tamanho_minimo, tamanho_ideal, ta
 
     previsao_onda = np.asarray(previsao_onda, dtype=float)
     score = np.zeros_like(previsao_onda, dtype=float)
-    
+
     ##################################################################################################################
     # Calculo do lado esquerdo (Ondas menores ou iguais ao tamanho ideal):
     mask_left = previsao_onda <= tamanho_ideal
