@@ -1,4 +1,31 @@
-# 📄 Documentação do Endpoint de Spots
+# 🌊 API TheCheck - Documentação
+
+## Índice
+
+1. [Spots](#documentação-do-endpoint-de-spots)
+   - [Listar Todos os Spots](#listar-todos-os-spots)
+
+2. [Usuários](#documentação-do-endpoint-de-usuários)
+   - [Registrar Usuário](#registrar-usuário)
+   - [Login](#login)
+   - [Buscar Perfil](#buscar-perfil-do-usuário)
+   - [Atualizar Perfil](#atualizar-perfil-do-usuário)
+
+3. [Presets](#documentação-do-endpoint-de-presets)
+   - [Criar Preset](#criar-preset)
+   - [Listar Presets](#listar-presets-do-usuário)
+   - [Buscar Preset por ID](#buscar-preset-por-id)
+   - [Atualizar Preset](#atualizar-preset)
+   - [Deletar Preset](#deletar-desativar-preset)
+   - [Buscar Preset Padrão](#buscar-preset-padrão)
+
+4. [Forecasts](#documentação-do-endpoint-de-forecasts)
+
+5. [Recomendações](#documentação-do-endpoint-de-recomendação)
+
+---
+
+# Documentação do Endpoint de Spots
 
 ## Endpoint Base
 
@@ -49,7 +76,7 @@
 
 - O endpoint retorna uma lista de todos os spots disponíveis no sistema.
 - Os campos retornados podem variar conforme o banco de dados, mas normalmente incluem informações como nome, localização e identificador do spot.
-# 📄 Documentação do Endpoint de Usuários
+# Documentação do Endpoint de Usuários
 
 ## Endpoint Base
 
@@ -181,7 +208,7 @@
 - Todos os endpoints retornam erro 400 ou 404 em caso de dados inválidos ou usuário não encontrado.
 - O campo `token` retornado no login é um JWT válido por 24 horas.
 - O campo `password_hash` nunca é retornado nas respostas.
-# 📄 Documentação do Endpoint de Presets
+# Documentação do Endpoint de Presets
 
 ## Endpoint Base
 
@@ -337,7 +364,7 @@
 - Os campos de horário seguem o padrão `HH:MM:SS`.
 - O campo `day_offset_default` é opcional e pode ser omitido.
 - O campo `is_active` indica se o preset está ativo ou foi desativado logicamente.
-# 📄 Documentação do Endpoint de Forecasts
+# Documentação do Endpoint de Forecasts
 
 ## Endpoint
 
@@ -397,7 +424,7 @@ POST http://127.0.0.1:5000/forecasts
 - Os campos marcados como `string (ISO 8601 datetime)` seguem o padrão de data/hora ISO 8601.
 - Arrays são indicados por colchetes, por exemplo: `["int"]` significa array de inteiros.
 - Campos `null` indicam que o valor pode ser nulo.
-# 📄 Documentação do Endpoint de Recomendação
+# Documentação do Endpoint de Recomendação
 
 ## Endpoint
 
