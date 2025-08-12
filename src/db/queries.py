@@ -2,7 +2,7 @@
 import os
 import datetime
 import asyncpg
-from src.db.async_connection import get_async_db_connection, release_async_db_connection
+from db.connection import get_async_db_connection, release_async_db_connection
 
 
 # --- Funções Assíncronas de Escrita de Dados (INSERT/UPDATE) ---

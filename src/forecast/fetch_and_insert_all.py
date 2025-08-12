@@ -6,7 +6,7 @@ import os
 import sys
 import decimal
 from src.db.queries import get_all_spots, insert_forecast_data, insert_extreme_tides_data
-from src.config import (
+from utils.config import (
     API_KEY_STORMGLASS, REQUEST_DIR, FORECAST_DAYS,
     WEATHER_API_URL, TIDE_SEA_LEVEL_API_URL, TIDE_EXTREMES_API_URL, PARAMS_WEATHER_API,
     TREATED_DIR

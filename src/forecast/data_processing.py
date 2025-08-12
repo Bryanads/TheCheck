@@ -1,7 +1,7 @@
 import arrow
 import os
 import json
-from src.config import REQUEST_DIR, TREATED_DIR
+from utils.config import REQUEST_DIR, TREATED_DIR
 from src.utils.utils import load_json_data, save_json_data
 
 
