@@ -67,6 +67,9 @@ def calcular_score_tamanho_onda(previsao_onda, tamanho_minimo, tamanho_ideal, ta
         
     score[mask_right] = np.exp(-k2 * (previsao_onda[mask_right] - tamanho_ideal)**p_direita)
 
+    score = score * 100
+    score = np.round(score, 2)
+
     return score
 
 def calcular_score_direcao_onda(previsao_direcao, direcao_ideal):
@@ -91,6 +94,9 @@ def calcular_score_direcao_onda(previsao_direcao, direcao_ideal):
     # Define o score
     score = np.exp(-diferenca**2 / (45**2))  # Penaliza diferenças maiores que 45 graus
 
+    score = score * 100
+    score = np.round(score, 2)
+
     return score
 
 def calcular_score_periodo_onda(previsao_periodo, periodo_ideal):
@@ -109,6 +115,10 @@ def calcular_score_periodo_onda(previsao_periodo, periodo_ideal):
     previsao_periodo = np.asarray(previsao_periodo, dtype=float)
     periodo_ideal = float(periodo_ideal) # Converter para float
     score = np.exp(-((previsao_periodo - periodo_ideal) ** 2) / (periodo_ideal + 1e-6)) # Adicionado 1e-6 para evitar divisão por zero
+
+    score = score * 100
+    score = np.round(score, 2)
+
     return score
 
 def calcular_impacto_swell_secundario(
@@ -193,5 +203,8 @@ def calcular_impacto_swell_secundario(
     # Calcula o score de impacto final usando a função tangente hiperbólica
     # Ela mapeia qualquer valor real de X_final para o intervalo [-1, 1].
     score_impacto = np.tanh(X_final)
+
+    score_impacto = score_impacto * 100
+    score_impacto = np.round(score_impacto, 2)
 
     return score_impacto

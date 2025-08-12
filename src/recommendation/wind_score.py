@@ -92,4 +92,7 @@ def calcular_score_vento(
     # Garantir que o score esteja sempre entre 0 e 1
     scores = np.clip(scores, 0.0, 1.0)
 
+    scores = scores * 100
+    scores = np.round(scores, 2)
+
     return scores

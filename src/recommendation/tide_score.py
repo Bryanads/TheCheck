@@ -49,4 +49,7 @@ def calcular_score_mare(previsao_mare, mare_ideal, mare_tipo_previsao, mare_tipo
     # Garante que o score final esteja entre 0 e 1
     score_final = np.clip(score_final, 0.0, 1.0)
 
+    score_final = score_final * 100
+    score_final = np.round(score_final, 2)
+
     return score_final
