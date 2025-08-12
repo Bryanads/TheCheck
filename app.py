@@ -6,6 +6,11 @@ load_dotenv()
 # Adiciona o diretório 'src' ao PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 
+
+# Inicializa o pool de conexões do banco de dados
+from src.db.connection import init_db_pool
+init_db_pool()
+
 from src.api import create_app
 
 app = create_app()
