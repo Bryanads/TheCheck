@@ -270,9 +270,8 @@ def calculate_suitability_score(forecast_entry, spot_preferences, spot_info, tid
         final_suitability_score = weighted_sum / total_weights
     
     # Garante que o score final esteja dentro do intervalo [0, 1] antes de escalar para 0-100
-    final_suitability_score = np.clip(final_suitability_score, 0.0, 1.0)
+    final_suitability_score = np.clip(final_suitability_score, 0.0, 100.0)
 
-    final_suitability_score = final_suitability_score * 100  # Converte para escala de 0 a 100
     final_suitability_score = np.round(final_suitability_score, 2)  # Arredonda para duas casas decimais
     
     return float(final_suitability_score), detailed_scores
