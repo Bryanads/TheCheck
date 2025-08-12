@@ -1,7 +1,7 @@
 def create_app():
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from db.connection import init_async_db_pool
+    from src.db.connection import init_async_db_pool
 
     app = FastAPI()
     app.add_middleware(

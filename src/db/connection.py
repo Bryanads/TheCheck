@@ -1,5 +1,5 @@
 import asyncpg
-from utils.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
+from src.utils.config import DB_USER, DB_PASSWORD, DB_HOST, DB_PORT, DB_NAME
 
 _async_pool = None
 

@@ -1,68 +1,68 @@
+import asyncio
 import json
 import os
 import sys
-from src.db.connection import get_db_connection, close_db_connection
+from src.db.connection import init_async_db_pool
 from src.db.queries import insert_forecast_data, insert_extreme_tides_data
-from utils.config import REQUEST_DIR, TREATED_DIR
+from src.utils.config import REQUEST_DIR, TREATED_DIR
 from src.forecast.data_processing import merge_stormglass_data, filter_forecast_time
 from src.utils.utils import convert_to_localtime, load_json_data
 
-
 def load_selected_spot():
+    """Carrega os dados do spot selecionado do arquivo JSON."""
     return load_json_data('current_spot.json', REQUEST_DIR)
 
-if __name__ == "__main__":
-    conn = get_db_connection()
-    if conn is None:
-        sys.exit(1)
-    cursor = conn.cursor()
+async def main():
+    """
+    Função principal assíncrona para processar dados de previsão já buscados
+    e inseri-los no banco de dados.
+    """
+    # Inicializa o pool de conexões assíncronas
+    await init_async_db_pool()
 
     spot = load_selected_spot()
     if not spot:
         print("Nenhum spot selecionado. Rode make_request.py primeiro.")
-        close_db_connection(conn, cursor)
         sys.exit(1)
 
     spot_id = spot['spot_id']
 
-    # Etapa 1: merge dos dados
+    # Etapa 1: Merge dos dados de clima e nível do mar
     merged = merge_stormglass_data('weather_data.json', 'sea_level_data.json', 'forecast_data.json')
     if not merged:
         print("Erro ao mesclar dados. Abortando inserção.")
-        close_db_connection(conn, cursor)
         sys.exit(1)
 
-    # Etapa 2: converter e filtrar
+    # Etapa 2: Converter para horário local e filtrar
     localtime_data = convert_to_localtime(merged)
     filtered = filter_forecast_time(localtime_data)
 
     if not filtered:
         print("Nenhum dado de previsão válido após filtro. Abortando.")
-        close_db_connection(conn, cursor)
         sys.exit(1)
 
-    # Salvando no diretório 'treated'
     os.makedirs(TREATED_DIR, exist_ok=True)
     with open(os.path.join(TREATED_DIR, 'forecast_data.json'), 'w', encoding='utf-8') as f:
         json.dump(filtered, f, ensure_ascii=False, indent=4)
 
-    # Inserir no banco
-    insert_forecast_data(cursor, spot_id, filtered)
+    # Inserir os dados de previsão no banco de forma assíncrona
+    await insert_forecast_data(spot_id, filtered)
 
-    # Etapa 3: dados de marés extremas
+    # Etapa 3: Processar e inserir dados de marés extremas
     tide_raw = load_json_data('tide_extremes_data.json', REQUEST_DIR)
     if tide_raw and 'data' in tide_raw:
         tide_data = convert_to_localtime(tide_raw['data'])
-
-        # Salvando no diretório 'treated'
         with open(os.path.join(TREATED_DIR, 'tide_extremes_filtered.json'), 'w', encoding='utf-8') as f:
             json.dump(tide_data, f, ensure_ascii=False, indent=4)
 
-        insert_extreme_tides_data(cursor, spot_id, tide_data)
+        # Inserir os dados de maré no banco de forma assíncrona
+        await insert_extreme_tides_data(spot_id, tide_data)
     else:
-        print("Erro ao carregar marés extremas. Abortando.")
-        close_db_connection(conn, cursor)
+        print("Erro ao carregar dados de marés extremas. Abortando.")
         sys.exit(1)
+    
+    print("Processo de salvamento e inserção de dados concluído com sucesso.")
 
-    conn.commit()
-    close_db_connection(conn, cursor)
+if __name__ == "__main__":
+    # Executa a função principal assíncrona
+    asyncio.run(main())

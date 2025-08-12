@@ -2,7 +2,7 @@
 import os
 import datetime
 import asyncpg
-from db.connection import get_async_db_connection, release_async_db_connection
+from src.db.connection import get_async_db_connection, release_async_db_connection
 
 
 # --- Funções Assíncronas de Escrita de Dados (INSERT/UPDATE) ---
@@ -126,7 +126,7 @@ async def insert_extreme_tides_data(spot_id, extremes_data):
                     """
                     INSERT INTO tides_forecast (spot_id, timestamp_utc, tide_type, height)
                     VALUES ($1, $2, $3, $4)
-                    ON CONFLICT (spot_id, timestamp_utc) DO UPDATE SET
+                    ON CONFLICT (spot_id, timestamp_utc, tide_type) DO UPDATE SET
                         tide_type = EXCLUDED.tide_type,
                         height = EXCLUDED.height;
                     """,
