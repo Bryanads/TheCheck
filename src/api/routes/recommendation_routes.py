@@ -43,10 +43,16 @@ async def generate_recommendations_logic(user_id, spot_ids_list, day_offsets, st
     if not surf_level:
         return {"error": f"Nível de surf não definido para o usuário {user_id}. Por favor, atualize seu perfil."}, 400
     try:
+        # Verificar se os horários estão no formato HH:MM:SS e converter para HH:MM
+        if len(start_time_str.split(":")) == 3:
+            start_time_str = ":".join(start_time_str.split(":")[:2])
+        if len(end_time_str.split(":")) == 3:
+            end_time_str = ":".join(end_time_str.split(":")[:2])
+            
         start_hour, start_minute = map(int, start_time_str.split(":"))
         end_hour, end_minute = map(int, end_time_str.split(":"))
     except ValueError as e:
-        return {"error": f"Formato de hora inválido. Use HH:MM: {e}"}, 400
+        return {"error": f"Formato de hora inválido. Use HH:MM ou HH:MM:SS: {e}"}, 400
 
     all_spot_recommendations = []
     for spot_id in spot_ids_list:
