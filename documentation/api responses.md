@@ -1,3 +1,342 @@
+# 📄 Documentação do Endpoint de Spots
+
+## Endpoint Base
+
+```
+/spots
+```
+
+---
+
+## Listar Todos os Spots
+
+**GET** `/spots`
+
+### Response
+
+```json
+[
+	{
+		"spot_id": "int",
+		"spot_name": "string",
+		"latitude": "float",
+		"longitude": "float",
+		"city": "string",
+		"state": "string",
+		"country": "string"
+		// ... outros campos que possam existir no retorno do banco
+	}
+]
+```
+
+- Caso não haja spots cadastrados, retorna:
+```json
+{
+	"message": "Nenhum spot encontrado."
+}
+```
+
+- Em caso de erro interno:
+```json
+{
+	"error": "Erro ao buscar spots: <mensagem de erro>"
+}
+```
+
+---
+
+### Observações
+
+- O endpoint retorna uma lista de todos os spots disponíveis no sistema.
+- Os campos retornados podem variar conforme o banco de dados, mas normalmente incluem informações como nome, localização e identificador do spot.
+# 📄 Documentação do Endpoint de Usuários
+
+## Endpoint Base
+
+```
+/users
+```
+
+---
+
+## Registrar Usuário
+
+**POST** `/users/register`
+
+### Request Body
+
+```json
+{
+	"name": "string",
+	"email": "string",
+	"password": "string",
+	"surf_level": "string", // opcional
+	"goofy_regular_stance": "string", // opcional
+	"preferred_wave_direction": "string", // opcional
+	"bio": "string", // opcional
+	"profile_picture_url": "string" // opcional
+}
+```
+
+### Response
+
+```json
+{
+	"message": "User registered successfully",
+	"user_id": "string (UUID)"
+}
+```
+
+---
+
+## Login
+
+**POST** `/users/login`
+
+### Request Body
+
+```json
+{
+	"email": "string",
+	"password": "string"
+}
+```
+
+### Response
+
+```json
+{
+	"message": "Login successful",
+	"token": "string (JWT)",
+	"user_id": "string (UUID)"
+}
+```
+
+---
+
+## Buscar Perfil do Usuário
+
+**GET** `/users/profile/{user_id}`
+
+### Response
+
+```json
+{
+	"user_id": "string (UUID)",
+	"name": "string",
+	"email": "string",
+	"surf_level": "string",
+	"goofy_regular_stance": "string",
+	"preferred_wave_direction": "string",
+	"bio": "string",
+	"profile_picture_url": "string",
+	"created_at": "string (ISO 8601 datetime)",
+	"updated_at": "string (ISO 8601 datetime)"
+}
+```
+
+---
+
+## Atualizar Perfil do Usuário
+
+**PUT** `/users/profile/{user_id}`
+
+### Request Body
+
+```json
+{
+	"name": "string", // opcional
+	"surf_level": "string", // opcional
+	"goofy_regular_stance": "string", // opcional
+	"preferred_wave_direction": "string", // opcional
+	"bio": "string", // opcional
+	"profile_picture_url": "string" // opcional
+}
+```
+
+### Response
+
+```json
+{
+	"message": "Profile updated successfully",
+	"user": {
+		"user_id": "string (UUID)",
+		"name": "string",
+		"email": "string",
+		"surf_level": "string",
+		"goofy_regular_stance": "string",
+		"preferred_wave_direction": "string",
+		"bio": "string",
+		"profile_picture_url": "string",
+		"created_at": "string (ISO 8601 datetime)",
+		"updated_at": "string (ISO 8601 datetime)"
+	}
+}
+```
+
+---
+
+### Observações
+
+- Todos os endpoints retornam erro 400 ou 404 em caso de dados inválidos ou usuário não encontrado.
+- O campo `token` retornado no login é um JWT válido por 24 horas.
+- O campo `password_hash` nunca é retornado nas respostas.
+# 📄 Documentação do Endpoint de Presets
+
+## Endpoint Base
+
+```
+/presets
+```
+
+---
+
+## Criar Preset
+
+**POST** `/presets`
+
+### Request Body
+
+```json
+{
+	"user_id": "string (UUID)",
+	"preset_name": "string",
+	"spot_ids": ["int"],
+	"start_time": "string (HH:MM)",
+	"end_time": "string (HH:MM)",
+	"day_offset_default": ["int"], // opcional
+	"is_default": "boolean" // opcional
+}
+```
+
+### Response
+
+```json
+{
+	"message": "Preset criado com sucesso!",
+	"preset_id": "int"
+}
+```
+
+---
+
+## Listar Presets do Usuário
+
+**GET** `/presets?user_id=string`
+
+### Response
+
+```json
+[
+	{
+		"preset_id": "int",
+		"user_id": "string",
+		"preset_name": "string",
+		"spot_ids": ["int"],
+		"start_time": "string (HH:MM:SS)",
+		"end_time": "string (HH:MM:SS)",
+		"day_offset_default": ["int"],
+		"is_default": "boolean",
+		"is_active": "boolean"
+	}
+]
+```
+
+---
+
+## Buscar Preset por ID
+
+**GET** `/presets/{preset_id}?user_id=string`
+
+### Response
+
+```json
+{
+	"preset_id": "int",
+	"user_id": "string",
+	"preset_name": "string",
+	"spot_ids": ["int"],
+	"start_time": "string (HH:MM:SS)",
+	"end_time": "string (HH:MM:SS)",
+	"day_offset_default": ["int"],
+	"is_default": "boolean",
+	"is_active": "boolean"
+}
+```
+
+---
+
+## Atualizar Preset
+
+**PUT** `/presets/{preset_id}`
+
+### Request Body
+
+```json
+{
+	"user_id": "string (UUID)",
+	"preset_name": "string", // opcional
+	"spot_ids": ["int"], // opcional
+	"start_time": "string (HH:MM)", // opcional
+	"end_time": "string (HH:MM)", // opcional
+	"day_offset_default": ["int"], // opcional
+	"is_default": "boolean", // opcional
+	"is_active": "boolean" // opcional
+}
+```
+
+### Response
+
+```json
+{
+	"message": "Preset atualizado com sucesso!"
+}
+```
+
+---
+
+## Deletar (Desativar) Preset
+
+**DELETE** `/presets/{preset_id}?user_id=string`
+
+### Response
+
+```json
+{
+	"message": "Preset desativado (excluído logicamente) com sucesso!"
+}
+```
+
+---
+
+## Buscar Preset Padrão
+
+**GET** `/presets/default?user_id=string`
+
+### Response
+
+```json
+{
+	"preset_id": "int",
+	"user_id": "string",
+	"preset_name": "string",
+	"spot_ids": ["int"],
+	"start_time": "string (HH:MM:SS)",
+	"end_time": "string (HH:MM:SS)",
+	"day_offset_default": ["int"],
+	"is_default": "boolean",
+	"is_active": "boolean"
+}
+```
+
+---
+
+### Observações
+
+- Todos os endpoints retornam erro 404 caso o usuário não seja encontrado.
+- Os campos de horário seguem o padrão `HH:MM:SS`.
+- O campo `day_offset_default` é opcional e pode ser omitido.
+- O campo `is_active` indica se o preset está ativo ou foi desativado logicamente.
 # 📄 Documentação do Endpoint de Forecasts
 
 ## Endpoint
