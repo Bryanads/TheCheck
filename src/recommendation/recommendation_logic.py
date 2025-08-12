@@ -2,6 +2,7 @@ import numpy as np
 
 from src.recommendation.wind_score import calcular_score_vento
 from src.recommendation.tide_score import calcular_score_mare
+from src.recommendation.current_score import calcular_score_corrente
 from src.recommendation.temperature_score import (
     calcular_score_temperatura_agua,
     calcular_score_temperatura_ar
@@ -176,6 +177,25 @@ def calculate_suitability_score(forecast_entry, spot_preferences, spot_info, tid
 
     """
     -----------------------------------------------------------------------------------------------
+    -----------------------------------------Scores Corrente-----------------------------------------
+    -----------------------------------------------------------------------------------------------
+    """
+    current_speed = forecast_entry.get('current_speed_sg')
+    # O spot_preferences pode ter 'ideal_current_speed', mas um default de 0.0 é razoável
+    ideal_current_speed = float(spot_preferences.get('ideal_current_speed', 0.0))
+
+    score_corrente = 0.0
+
+    if current_speed is not None and ideal_current_speed is not None:
+        score_corrente_result = calcular_score_corrente(
+            current_speed,
+            ideal_current_speed
+        )
+        score_corrente = float(score_corrente_result.item()) if isinstance(score_corrente_result, np.ndarray) else float(score_corrente_result)
+    detailed_scores['current_score'] = score_corrente
+
+    """
+    -----------------------------------------------------------------------------------------------
     ------------------------------Scores impacto Swell Secundário----------------------------------
     -----------------------------------------------------------------------------------------------
     """
@@ -226,13 +246,14 @@ def calculate_suitability_score(forecast_entry, spot_preferences, spot_info, tid
 
 
     weights = {
-        'wave_height_score': 0.30,
+        'wave_height_score': 0.29,
         'swell_direction_score': 0.10,
         'swell_period_score': 0.10,
-        'wind_score': 0.30,
+        'wind_score': 0.29,
         'tide_score': 0.10,
         'water_temperature_score': 0.05,
-        'air_temperature_score': 0.05
+        'air_temperature_score': 0.05,
+        'current_score': 0.02 
     }
 
     # Calcula o score total ponderado
