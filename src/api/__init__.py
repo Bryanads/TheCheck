@@ -1,28 +1,32 @@
-from flask import Flask
-from flask_cors import CORS
-
 def create_app():
-    app = Flask(__name__)
-    CORS(app)
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from src.db.async_connection import init_async_db_pool
 
-    # Importa e registra as blueprints aqui
-    from .routes.recommendation_routes import recommendation_bp
-    app.register_blueprint(recommendation_bp)
+    app = FastAPI()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
-    # Importa e registra a blueprint de previsões puras
-    from .routes.forecast_routes import forecast_bp
-    app.register_blueprint(forecast_bp)
+    # Importa e inclui os routers
+    from .routes.recommendation_routes import router as recommendation_router
+    from .routes.forecast_routes import router as forecast_router
+    from .routes.spot_routes import router as spot_router
+    from .routes.user_routes import router as user_router
+    from .routes.preset_routes import router as preset_router
 
-    # Importa e registra a blueprint de spots
-    from .routes.spot_routes import spot_bp
-    app.register_blueprint(spot_bp)
+    app.include_router(recommendation_router)
+    app.include_router(forecast_router)
+    app.include_router(spot_router)
+    app.include_router(user_router)
+    app.include_router(preset_router)
 
-    # Importa e registra a blueprint de usuários
-    from .routes.user_routes import user_bp  
-    app.register_blueprint(user_bp)
-
-    # Importa e registra a blueprint de presets de recomendação
-    from .routes.preset_routes import preset_bp 
-    app.register_blueprint(preset_bp)
+    @app.on_event("startup")
+    async def startup_event():
+        await init_async_db_pool()
 
     return app

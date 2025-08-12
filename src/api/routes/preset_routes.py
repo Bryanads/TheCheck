@@ -1,4 +1,6 @@
-from flask import Blueprint, request, jsonify
+from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import datetime
 from src.db.queries import (
     create_user_recommendation_preset,
@@ -7,57 +9,82 @@ from src.db.queries import (
     update_user_recommendation_preset,
     delete_user_recommendation_preset,
     get_user_by_id,
-    get_default_user_recommendation_preset # Importar a nova função
+    get_default_user_recommendation_preset
 )
 
-preset_bp = Blueprint('presets', __name__)
+router = APIRouter(prefix="/presets", tags=["presets"])
 
-@preset_bp.route('/presets', methods=['POST'])
-def create_preset_endpoint():
-    data = request.get_json()
+class PresetCreateRequest(BaseModel):
+    user_id: str
+    preset_name: str
+    spot_ids: list[int]
+    start_time: str
+    end_time: str
+    day_offset_default: list[int] | None = None
+    is_default: bool = False
+
+class PresetUpdateRequest(BaseModel):
+    user_id: str
+    preset_name: str | None = None
+    spot_ids: list[int] | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    day_offset_default: list[int] | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+@router.post("")
+async def create_preset_endpoint(request: PresetCreateRequest):
+    data = request.dict()
     user_id = data.get('user_id')
     preset_name = data.get('preset_name')
     spot_ids = data.get('spot_ids')
     start_time_str = data.get('start_time')
     end_time_str = data.get('end_time')
-    day_offset_default = data.get('day_offset_default') # Não assume mais 0, pode ser None se não enviado
+    day_offset_default = data.get('day_offset_default')
     is_default = data.get('is_default', False)
 
     if not all([user_id, preset_name, spot_ids, start_time_str, end_time_str]):
-        return jsonify({"error": "Todos os campos obrigatórios (user_id, preset_name, spot_ids, start_time, end_time) são necessários."}), 400
+        raise HTTPException(status_code=400, detail="Todos os campos obrigatórios (user_id, preset_name, spot_ids, start_time, end_time) são necessários.")
 
-    user = get_user_by_id(user_id)
+    user = await get_user_by_id(user_id)
     if not user:
-        return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
 
     try:
         spot_ids = [int(s_id) for s_id in spot_ids]
         start_time = datetime.time.fromisoformat(start_time_str)
         end_time = datetime.time.fromisoformat(end_time_str)
-
         if day_offset_default is not None:
             if not isinstance(day_offset_default, list):
-                return jsonify({"error": "day_offset_default deve ser uma lista de números inteiros."}), 400
+                raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
             day_offset_default = [int(offset) for offset in day_offset_default]
-        
     except (ValueError, TypeError) as e:
-        return jsonify({"error": f"Erro de formato de dados. Verifique spot_ids (lista de inteiros), horários (HH:MM:SS) e day_offset_default (lista de inteiros). Erro: {e}"}), 400
+        raise HTTPException(status_code=400, detail=f"Erro de formato de dados. Verifique spot_ids (lista de inteiros), horários (HH:MM:SS) e day_offset_default (lista de inteiros). Erro: {e}")
 
     try:
-        preset_id = create_user_recommendation_preset(
+        preset_id = await create_user_recommendation_preset(
             user_id, preset_name, spot_ids, start_time, end_time, day_offset_default, is_default
         )
-        return jsonify({"message": "Preset criado com sucesso!", "preset_id": preset_id}), 201
+        return {"message": "Preset criado com sucesso!", "preset_id": preset_id}
     except Exception as e:
-        return jsonify({"error": f"Falha ao criar preset: {e}"}), 500
+        raise HTTPException(status_code=500, detail=f"Falha ao criar preset: {e}")
 
-@preset_bp.route('/presets', methods=['GET'])
-def get_presets_endpoint():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Campo 'user_id' é obrigatório como parâmetro de query."}), 400
-    
-    user = get_user_by_id(user_id)
+@router.get("")
+async def get_presets_endpoint(user_id: str = Query(...)):
+    user = await get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
+    try:
+        presets = await get_user_recommendation_presets(user_id)
+        for preset in presets:
+            if isinstance(preset.get('start_time'), datetime.time):
+                preset['start_time'] = preset['start_time'].strftime('%H:%M:%S')
+            if isinstance(preset.get('end_time'), datetime.time):
+                preset['end_time'] = preset['end_time'].strftime('%H:%M:%S')
+        return presets
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Falha ao buscar presets: {e}")
     if not user:
         return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
 
@@ -72,127 +99,104 @@ def get_presets_endpoint():
     except Exception as e:
         return jsonify({"error": f"Falha ao buscar presets: {e}"}), 500
 
-@preset_bp.route('/presets/<int:preset_id>', methods=['GET'])
-def get_preset_by_id_endpoint(preset_id):
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Campo 'user_id' é obrigatório como parâmetro de query."}), 400
 
-    user = get_user_by_id(user_id)
+# GET preset by id
+@router.get("/{preset_id}")
+async def get_preset_by_id_endpoint(preset_id: int, user_id: str = Query(...)):
+    user = await get_user_by_id(user_id)
     if not user:
-        return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
-
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
     try:
-        preset = get_user_recommendation_preset_by_id(preset_id, user_id)
+        preset = await get_user_recommendation_preset_by_id(preset_id, user_id)
         if not preset:
-            return jsonify({"error": f"Preset com ID {preset_id} não encontrado para o usuário {user_id}."}), 404
-        
+            raise HTTPException(status_code=404, detail=f"Preset com ID {preset_id} não encontrado para o usuário {user_id}.")
         if isinstance(preset.get('start_time'), datetime.time):
             preset['start_time'] = preset['start_time'].strftime('%H:%M:%S')
         if isinstance(preset.get('end_time'), datetime.time):
             preset['end_time'] = preset['end_time'].strftime('%H:%M:%S')
-
-        return jsonify(preset), 200
+        return preset
     except Exception as e:
-        return jsonify({"error": f"Falha ao buscar preset: {e}"}), 500
+        raise HTTPException(status_code=500, detail=f"Falha ao buscar preset: {e}")
 
-@preset_bp.route('/presets/<int:preset_id>', methods=['PUT'])
-def update_preset_endpoint(preset_id):
-    data = request.get_json()
+# PUT update preset
+@router.put("/{preset_id}")
+async def update_preset_endpoint(preset_id: int, request: PresetUpdateRequest):
+    data = request.dict()
     user_id = data.get('user_id')
     if not user_id:
-        return jsonify({"error": "Campo 'user_id' é obrigatório no corpo da requisição."}), 400
-
-    user = get_user_by_id(user_id)
+        raise HTTPException(status_code=400, detail="Campo 'user_id' é obrigatório no corpo da requisição.")
+    user = await get_user_by_id(user_id)
     if not user:
-        return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
-    
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
     updates = {}
-    if 'preset_name' in data:
+    if data.get('preset_name') is not None:
         updates['preset_name'] = data['preset_name']
-    if 'spot_ids' in data:
+    if data.get('spot_ids') is not None:
         try:
             updates['spot_ids'] = [int(s_id) for s_id in data['spot_ids']]
         except (ValueError, TypeError):
-            return jsonify({"error": "spot_ids deve ser uma lista de IDs de spots inteiros."}), 400
-    
-    if 'start_time' in data:
+            raise HTTPException(status_code=400, detail="spot_ids deve ser uma lista de IDs de spots inteiros.")
+    if data.get('start_time') is not None:
         try:
             updates['start_time'] = datetime.time.fromisoformat(data['start_time'])
         except ValueError:
-            return jsonify({"error": "Formato de start_time inválido. Use HH:MM:SS."}), 400
-    if 'end_time' in data:
+            raise HTTPException(status_code=400, detail="Formato de start_time inválido. Use HH:MM:SS.")
+    if data.get('end_time') is not None:
         try:
             updates['end_time'] = datetime.time.fromisoformat(data['end_time'])
         except ValueError:
-            return jsonify({"error": "Formato de end_time inválido. Use HH:MM:SS."}), 400
-    
-    if 'day_offset_default' in data:
+            raise HTTPException(status_code=400, detail="Formato de end_time inválido. Use HH:MM:SS.")
+    if data.get('day_offset_default') is not None:
         try:
             if not isinstance(data['day_offset_default'], list):
-                return jsonify({"error": "day_offset_default deve ser uma lista de números inteiros."}), 400
+                raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
             updates['day_offset_default'] = [int(offset) for offset in data['day_offset_default']]
         except (ValueError, TypeError):
-            return jsonify({"error": "day_offset_default deve ser uma lista de números inteiros."}), 400
-    
-    if 'is_default' in data:
+            raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
+    if data.get('is_default') is not None:
         updates['is_default'] = bool(data['is_default'])
-    if 'is_active' in data:
+    if data.get('is_active') is not None:
         updates['is_active'] = bool(data['is_active'])
-
     if not updates:
-        return jsonify({"message": "Nenhum campo fornecido para atualização."}), 400
-
+        raise HTTPException(status_code=400, detail="Nenhum campo fornecido para atualização.")
     try:
-        success = update_user_recommendation_preset(preset_id, user_id, updates)
+        success = await update_user_recommendation_preset(preset_id, user_id, updates)
         if success:
-            return jsonify({"message": "Preset atualizado com sucesso!"}), 200
+            return {"message": "Preset atualizado com sucesso!"}
         else:
-            return jsonify({"error": "Preset não encontrado ou não autorizado para atualização."}), 404
+            raise HTTPException(status_code=404, detail="Preset não encontrado ou não autorizado para atualização.")
     except Exception as e:
-        return jsonify({"error": f"Falha ao atualizar preset: {e}"}), 500
+        raise HTTPException(status_code=500, detail=f"Falha ao atualizar preset: {e}")
 
-@preset_bp.route('/presets/<int:preset_id>', methods=['DELETE'])
-def delete_preset_endpoint(preset_id):
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Campo 'user_id' é obrigatório como parâmetro de query."}), 400
-    
-    user = get_user_by_id(user_id)
+# DELETE preset
+@router.delete("/{preset_id}")
+async def delete_preset_endpoint(preset_id: int, user_id: str = Query(...)):
+    user = await get_user_by_id(user_id)
     if not user:
-        return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
-
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
     try:
-        success = delete_user_recommendation_preset(preset_id, user_id)
+        success = await delete_user_recommendation_preset(preset_id, user_id)
         if success:
-            return jsonify({"message": "Preset desativado (excluído logicamente) com sucesso!"}), 200
+            return {"message": "Preset desativado (excluído logicamente) com sucesso!"}
         else:
-            return jsonify({"error": "Preset não encontrado ou não autorizado para desativação."}), 404
+            raise HTTPException(status_code=404, detail="Preset não encontrado ou não autorizado para desativação.")
     except Exception as e:
-        return jsonify({"error": f"Falha ao desativar preset: {e}"}), 500
+        raise HTTPException(status_code=500, detail=f"Falha ao desativar preset: {e}")
 
-# NOVO ENDPOINT: Obter preset padrão
-@preset_bp.route('/presets/default', methods=['GET'])
-def get_default_preset_endpoint():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Campo 'user_id' é obrigatório como parâmetro de query."}), 400
-    
-    user = get_user_by_id(user_id)
+# GET default preset
+@router.get("/default")
+async def get_default_preset_endpoint(user_id: str = Query(...)):
+    user = await get_user_by_id(user_id)
     if not user:
-        return jsonify({"error": f"Usuário com ID {user_id} não encontrado."}), 404
-
+        raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
     try:
-        preset = get_default_user_recommendation_preset(user_id)
+        preset = await get_default_user_recommendation_preset(user_id)
         if not preset:
-            return jsonify({"message": "Nenhum preset padrão encontrado para este usuário."}), 200
-        
-        # Formatar horários para string para JSON
+            return {"message": "Nenhum preset padrão encontrado para este usuário."}
         if isinstance(preset.get('start_time'), datetime.time):
             preset['start_time'] = preset['start_time'].strftime('%H:%M:%S')
         if isinstance(preset.get('end_time'), datetime.time):
             preset['end_time'] = preset['end_time'].strftime('%H:%M:%S')
-
-        return jsonify(preset), 200
+        return preset
     except Exception as e:
-        return jsonify({"error": f"Falha ao buscar preset padrão: {e}"}), 500
+        raise HTTPException(status_code=500, detail=f"Falha ao buscar preset padrão: {e}")

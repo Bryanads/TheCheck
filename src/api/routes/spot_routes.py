@@ -1,20 +1,19 @@
-from flask import Blueprint, jsonify
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from src.db.queries import get_all_spots
 
-spot_bp = Blueprint('spots', __name__)
+router = APIRouter(prefix="/spots", tags=["spots"])
 
-@spot_bp.route('/spots', methods=['GET'])
-def get_all_spots_endpoint():
+@router.get("")
+async def get_all_spots_endpoint():
     """
     Endpoint para retornar uma lista de todos os spots disponíveis.
     """
     try:
-        # get_all_spots agora retorna dados com chaves em snake_case
-        spots_raw = get_all_spots()
-        if spots_raw is not None:
-            # Não é mais necessário formatar, pois já vem em snake_case
-            return jsonify(spots_raw), 200
+        spots_raw = await get_all_spots()
+        if spots_raw:
+            return spots_raw
         else:
-            return jsonify({"message": "Nenhum spot encontrado."}), 404
+            return JSONResponse(status_code=404, content={"message": "Nenhum spot encontrado."})
     except Exception as e:
-        return jsonify({"error": f"Erro ao buscar spots: {e}"}), 500
+        return JSONResponse(status_code=500, content={"error": f"Erro ao buscar spots: {e}"})
