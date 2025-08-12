@@ -400,33 +400,33 @@ async def get_user_recommendation_preset_by_id(preset_id, user_id):
 async def update_user_recommendation_preset(preset_id, user_id, updates: dict):
     """
     Atualiza um preset de recomendação existente.
-    Permite atualizar nome, spot_ids, horários, day_offset_default (como lista) e is_default.
     """
     if not updates:
         return False
+    
     conn = await get_async_db_connection()
     try:
         query_parts = []
         values_for_query = []
+        
         if 'is_default' in updates and updates['is_default']:
             await conn.execute("UPDATE user_recommendation_presets SET is_default = FALSE WHERE user_id = $1 AND is_default = TRUE AND preset_id != $2;", str(user_id), preset_id)
+            
         for key, value in updates.items():
-            query_parts.append(f"{key} = ${len(values_for_query)+1}")
-            if key in ['spot_ids', 'day_offset_default']:
-                if not isinstance(value, list):
-                    raise ValueError(f"Campo '{key}' deve ser uma lista.")
-                values_for_query.append(value)
-            elif isinstance(value, datetime.time):
-                values_for_query.append(value.strftime('%H:%M:%S'))
-            else:
-                values_for_query.append(value)
-        query_sql = f"UPDATE user_recommendation_presets SET {', '.join(query_parts)}, updated_at = NOW() WHERE preset_id = ${len(values_for_query)+1} AND user_id = ${len(values_for_query)+2};"
+            query_parts.append(f"{key} = ${len(values_for_query) + 1}")
+            
+            values_for_query.append(value)
+            
+        query_sql = f"UPDATE user_recommendation_presets SET {', '.join(query_parts)}, updated_at = NOW() WHERE preset_id = ${len(values_for_query) + 1} AND user_id = ${len(values_for_query) + 2};"
         values_for_query.append(preset_id)
         values_for_query.append(str(user_id))
+        
         result = await conn.execute(query_sql, *values_for_query)
         return result[-1] != '0'  # rowcount > 0
+        
     finally:
         await release_async_db_connection(conn)
+
 
 async def delete_user_recommendation_preset(preset_id, user_id):
     """
