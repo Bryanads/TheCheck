@@ -96,7 +96,7 @@ async def login_user(request: LoginRequest):
         print(f"Warning: Could not update last login for user {user['user_id']}: {e}")
 
     token_payload = {
-        'user_id': user['user_id'],
+        'user_id': str(user['user_id']),
         'email': user['email'],
         'exp': (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)).timestamp()
     }
