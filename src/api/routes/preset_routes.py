@@ -136,16 +136,18 @@ async def update_preset_endpoint(preset_id: int, request: PresetUpdateRequest):
             updates['spot_ids'] = [int(s_id) for s_id in data['spot_ids']]
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="spot_ids deve ser uma lista de IDs de spots inteiros.")
-    if data.get('start_time') is not None:
+   # ATUALIZADO: Converte de "HH:MM" para objeto time
+    if 'start_time' in updates:
         try:
-            updates['start_time'] = datetime.time.fromisoformat(data['start_time'])
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato de start_time inválido. Use HH:MM:SS.")
-    if data.get('end_time') is not None:
+            updates['start_time'] = datetime.datetime.strptime(updates['start_time'], '%H:%M').time()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de start_time inválido. Use HH:MM.")
+            
+    if 'end_time' in updates:
         try:
-            updates['end_time'] = datetime.time.fromisoformat(data['end_time'])
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Formato de end_time inválido. Use HH:MM:SS.")
+            updates['end_time'] = datetime.datetime.strptime(updates['end_time'], '%H:%M').time()
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de end_time inválido. Use HH:MM.")
     if data.get('day_offset_default') is not None:
         try:
             if not isinstance(data['day_offset_default'], list):
