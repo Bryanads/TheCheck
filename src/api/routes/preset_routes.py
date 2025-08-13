@@ -121,46 +121,60 @@ async def get_preset_by_id_endpoint(preset_id: int, user_id: str = Query(...)):
 # PUT update preset
 @router.put("/{preset_id}")
 async def update_preset_endpoint(preset_id: int, request: PresetUpdateRequest):
-    data = request.dict()
+    # Usamos .model_dump() com exclude_unset=True para pegar apenas os campos enviados na requisição
+    data = request.model_dump(exclude_unset=True)
     user_id = data.get('user_id')
+
     if not user_id:
         raise HTTPException(status_code=400, detail="Campo 'user_id' é obrigatório no corpo da requisição.")
+
     user = await get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=404, detail=f"Usuário com ID {user_id} não encontrado.")
+
     updates = {}
-    if data.get('preset_name') is not None:
+
+    # Mantém a lógica para os campos que não precisam de conversão
+    if 'preset_name' in data:
         updates['preset_name'] = data['preset_name']
-    if data.get('spot_ids') is not None:
+    if 'is_default' in data:
+        updates['is_default'] = bool(data['is_default'])
+    if 'is_active' in data:
+        updates['is_active'] = bool(data['is_active'])
+
+    # Lógica de conversão para campos específicos
+    if 'spot_ids' in data:
         try:
             updates['spot_ids'] = [int(s_id) for s_id in data['spot_ids']]
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="spot_ids deve ser uma lista de IDs de spots inteiros.")
-   # ATUALIZADO: Converte de "HH:MM" para objeto time
-    if 'start_time' in updates:
-        try:
-            updates['start_time'] = datetime.datetime.strptime(updates['start_time'], '%H:%M').time()
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Formato de start_time inválido. Use HH:MM.")
-            
-    if 'end_time' in updates:
-        try:
-            updates['end_time'] = datetime.datetime.strptime(updates['end_time'], '%H:%M').time()
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Formato de end_time inválido. Use HH:MM.")
-    if data.get('day_offset_default') is not None:
+
+    if 'day_offset_default' in data:
         try:
             if not isinstance(data['day_offset_default'], list):
                 raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
             updates['day_offset_default'] = [int(offset) for offset in data['day_offset_default']]
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
-    if data.get('is_default') is not None:
-        updates['is_default'] = bool(data['is_default'])
-    if data.get('is_active') is not None:
-        updates['is_active'] = bool(data['is_active'])
+
+    # CORREÇÃO: Checar o dicionário 'data' original e usar o formato de tempo correto
+    if 'start_time' in data:
+        try:
+            # CORREÇÃO: Usar o formato HH:MM:SS
+            updates['start_time'] = datetime.time.fromisoformat(data['start_time'])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de start_time inválido. Use HH:MM:SS.")
+
+    if 'end_time' in data:
+        try:
+            # CORREÇÃO: Usar o formato HH:MM:SS
+            updates['end_time'] = datetime.time.fromisoformat(data['end_time'])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Formato de end_time inválido. Use HH:MM:SS.")
+
     if not updates:
         raise HTTPException(status_code=400, detail="Nenhum campo fornecido para atualização.")
+
     try:
         success = await update_user_recommendation_preset(preset_id, user_id, updates)
         if success:
