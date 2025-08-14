@@ -1,76 +1,68 @@
 import numpy as np
 
-def calcular_score_tamanho_onda(previsao_onda, tamanho_minimo, tamanho_ideal, tamanho_maximo):
+def calcular_score_tamanho_onda(
+    previsao_onda, tamanho_minimo, tamanho_ideal, tamanho_maximo
+):
     """
-    Calcula um score para o tamanho de uma onda, penalizando assimetricamente.
+    Calcula o score do tamanho da onda usando curvas suaves para uma representação mais realista.
 
-    Args:
-        previsao_onda (float ou array-like): O tamanho da onda previsto.
-        tamanho_minimo (float): O tamanho mínimo aceitável da onda.
-        tamanho_ideal (float): O tamanho ideal da onda (score = 1.0).
-        tamanho_maximo (float): O tamanho máximo aceitável da onda (score próximo de 0).
-
-    Returns:
-        float ou array-like: O score calculado (entre 0 e 1).
+    - Abaixo do mínimo: Curva quadrática suave de 0 a -100.
+    - Mínimo ao Ideal: Curva senoidal crescente de 0 a 100 para uma subida suave.
+    - Ideal ao Máximo: Curva cossenoidal decrescente de 100 a 0 para uma queda suave.
+    - Acima do máximo: Decaimento exponencial de 0 a -100 para refletir o aumento do risco.
     """
-
     previsao_onda = np.asarray(previsao_onda, dtype=float)
-    # Converter explicitamente os parâmetros de entrada para float
-    tamanho_minimo = float(tamanho_minimo)
-    tamanho_ideal = float(tamanho_ideal)
-    tamanho_maximo = float(tamanho_maximo)
+    score = np.zeros_like(previsao_onda)
 
-    score = np.zeros_like(previsao_onda, dtype=float)
+    # --- Seção 1: Onda menor que o limite mínimo (Flat a Pequeno) ---
+    # A penalidade aumenta quadraticamente à medida que a onda se afasta (para baixo) do mínimo.
+    # Isso cria uma curva suave que penaliza mais fortemente ondas muito pequenas.
+    mask1 = previsao_onda < tamanho_minimo
+    if tamanho_minimo > 0:
+        # Normaliza a distância do mínimo e eleva ao quadrado para a curva.
+        # O resultado vai de 0 (no tamanho_minimo) a -1 (em 0m).
+        score[mask1] = -(((tamanho_minimo - previsao_onda[mask1]) / tamanho_minimo) ** 2)
 
-    ##################################################################################################################
-    # Calculo do lado esquerdo (Ondas menores ou iguais ao tamanho ideal):
-    mask_left = previsao_onda <= tamanho_ideal
-    # Garante que k1 não seja negativo ou cause problemas se tamanho_minimo > tamanho_ideal
-    k1_denom = (tamanho_ideal - tamanho_minimo)
-    if k1_denom <= 0: # Evita divisão por zero ou k1 inválido
-        k1 = 1.0 # Valor padrão se não houver faixa válida
-    else:
-        # Ajuste k1 para controlar a queda do score. Um valor maior significa queda mais rápida.
-        # k1 = 1.0 / k1_denom # Uma opção linear simples
-        k1 = 2.0 / (k1_denom + 1e-6) # Uma opção com ajuste para evitar divisão por zero e controlar inclinação
-    
-    score[mask_left] = np.exp(-k1 * (tamanho_ideal - previsao_onda[mask_left])**2)
-    """
-    Função exponencial quadrática:
-    f(x) = exp(-k1 * (tamanho_ideal - x)^2)
-    Onde:
-    - f(x) é o score calculado.
-    - k1 é uma constante de proporcionalidade que determina a suavidade da curva.
-    - tamanho_ideal é o tamanho ideal da onda.
-    - x é o tamanho da onda previsto.
+    # --- Seção 2: Onda entre o limite mínimo e o ideal (Na medida certa) ---
+    # Usamos meio período de uma onda senoidal para uma transição suave de 0 a 1.
+    # O expoente 1.5 faz a curva subir um pouco mais rápido no início, refletindo
+    # a empolgação de sair do "muito pequeno" para o "bom".
+    mask2 = (previsao_onda >= tamanho_minimo) & (previsao_onda <= tamanho_ideal)
+    if tamanho_ideal > tamanho_minimo:
+        fator_normalizado = (previsao_onda[mask2] - tamanho_minimo) / (tamanho_ideal - tamanho_minimo)
+        score[mask2] = np.sin(fator_normalizado * np.pi / 2) ** 1.5
 
-    Usamos essa função pois é uma curva suave, com o k1 sendo calculado dinamicamente. 
-    Isso garante que, para valores de tamanho mínimo próximos ao tamanho ideal, o score ainda será alto.
-    Já para valores de tamanho mínimo muito distantes do tamanho ideal, o score será baixo.
-    """
-    
-    ##################################################################################################################
-    # Cálculo do lado direito (Ondas maiores que o tamanho ideal): 
-    mask_right = previsao_onda > tamanho_ideal
-    if (tamanho_maximo - tamanho_ideal) >= 1.0:
-        p_direita = 6 
-    else:
-        p_direita = 3 
+    # --- Seção 3: Onda entre o ideal e o limite máximo (Grande mas ainda bom) ---
+    # Usamos meio período de uma onda cossenoidal para uma transição suave de 1 a 0.
+    # Isso conecta perfeitamente com o pico da seção anterior.
+    mask3 = (previsao_onda > tamanho_ideal) & (previsao_onda <= tamanho_maximo)
+    if tamanho_maximo > tamanho_ideal:
+        fator_normalizado = (previsao_onda[mask3] - tamanho_ideal) / (tamanho_maximo - tamanho_ideal)
+        score[mask3] = np.cos(fator_normalizado * np.pi / 2)
 
-    epsilon = 0.1 # Score desejado no tamanho_maximo
-    denominador = (tamanho_maximo - tamanho_ideal)**p_direita
+    # --- Seção 4: Onda maior que o limite máximo (Muito Grande/Perigoso) ---
+    # A penalidade é uma RETA que começa em 0 e decresce linearmente.
+    mask4 = previsao_onda > tamanho_maximo
 
-    if denominador == 0:
-        k2 = 1.0 # Caso de divisão por zero (se tamanho_maximo == tamanho_ideal)
-    else:
-        k2 = -np.log(epsilon) / denominador
-        
-    score[mask_right] = np.exp(-k2 * (previsao_onda[mask_right] - tamanho_ideal)**p_direita)
+    # Caso 1: A faixa "grande" (ideal -> max) tem um tamanho.
+    if tamanho_maximo > tamanho_ideal:
+        # A inclinação (slope) da reta.
+        # Será -1 dividido pela largura da faixa "grande".
+        # Ex: Se ideal=2m e max=3m, a inclinação é -1.0. A cada 1m extra, o score cai 1.0.
+        slope = -2.0 / (tamanho_maximo - tamanho_ideal)
 
-    score = score * 100
-    score = np.round(score, 2)
+        # Calcula o score usando a equação da reta: y = m * (x - x_inicial)
+        score_linear = slope * (previsao_onda[mask4] - tamanho_maximo)
 
-    return score
+        # Trava o score em -1. Qualquer onda muito grande recebe a penalidade máxima.
+        score[mask4] = np.maximum(-1.0, score_linear)
+
+    # Caso 2: Ideal e Máximo são o mesmo valor. Qualquer onda acima recebe penalidade máxima.
+    elif tamanho_maximo == tamanho_ideal and tamanho_maximo >= 0:
+        score[mask4] = -1.0
+
+    # Multiplica por 100 e arredonda
+    return np.round(score * 100, 2)
 
 def calcular_score_direcao_onda(previsao_direcao, direcao_ideal):
     """
@@ -125,86 +117,139 @@ def calcular_impacto_swell_secundario(
     previsao_swell_secundario_tamanho,
     previsao_swell_secundario_periodo,
     previsao_swell_secundario_direcao,
-    previsao_onda_tamanho,        
-    previsao_onda_periodo,          
-    previsao_onda_direcao           
+    previsao_onda_tamanho,
+    previsao_onda_periodo,
+    previsao_onda_direcao
 ):
     """
-    Calcula o impacto de um swell secundário nas ondas principais,
-    retornando um score entre -1 (impacto muito negativo) e 1 (impacto muito positivo).
+    Calcula o impacto do swell secundário, retornando um valor entre -1 e 1.
 
-    Args:
-        previsao_swell_secundario_tamanho (float ou array-like): Tamanho do swell secundário (metros).
-        previsao_swell_secundario_periodo (float ou array-like): Período do swell secundário (segundos).
-        previsao_swell_secundario_direcao (float ou array-like): Direção do swell secundário (graus).
-        previsao_onda_tamanho (float ou array-like): Tamanho da onda principal (metros).
-        previsao_onda_periodo (float ou array-like): Período da onda principal (segundos).
-        previsao_onda_direcao (float ou array-like): Direção da onda principal (graus).
-
-    Returns:
-        float ou array-like: O score de impacto (-1 a 1).
+    -1: Impacto extremamente negativo (ex: cross swell forte).
+     0: Impacto neutro ou insignificante.
+    +1: Impacto positivo (ex: swell de enchimento que ajuda a formar picos).
     """
-
-    # Garante que todas as entradas são arrays numpy para cálculos vetorizados e convertidas para float
-    previsao_swell_secundario_tamanho = np.asarray(previsao_swell_secundario_tamanho, dtype=float)
-    previsao_swell_secundario_periodo = np.asarray(previsao_swell_secundario_periodo, dtype=float)
-    previsao_swell_secundario_direcao = np.asarray(previsao_swell_secundario_direcao, dtype=float)
-    previsao_onda_tamanho = np.asarray(previsao_onda_tamanho, dtype=float)
-    previsao_onda_periodo = np.asarray(previsao_onda_periodo, dtype=float)
-    previsao_onda_direcao = np.asarray(previsao_onda_direcao, dtype=float)
-
-    # --- 1. Cálculo do Impacto da Direção ---
-    # Calcula a menor diferença angular entre as direções (0 a 180 graus)
-    delta_direcao = np.abs(previsao_swell_secundario_direcao - previsao_onda_direcao) % 360
-    delta_direcao = np.minimum(delta_direcao, 360 - delta_direcao) 
+    # --- 1. Score da Direção (o mais importante) ---
+    # Usamos o cosseno da diferença de ângulo.
+    # Se a diferença é 0°, cos(0) = 1 (alinhamento perfeito, positivo).
+    # Se a diferença é 90° (cross swell), cos(90) = 0 (neutro, mas vamos penalizar).
+    # Se a diferença é 180°, cos(180) = -1 (swell oposto, muito negativo).
+    diferenca_direcao = np.abs(previsao_swell_secundario_direcao - previsao_onda_direcao)
+    diferenca_direcao = min(diferenca_direcao, 360 - diferenca_direcao)
     
-    # Fator de alinhamento da direção:
-    # cos(0°) = 1 (mesma direção - positivo)
-    # cos(90°) = 0 (perpendicular - neutro)
-    # cos(180°) = -1 (oposta - negativo)
-    fator_alinhamento_direcao = np.cos(np.radians(delta_direcao))
+    # Mapeamos a diferença para uma escala de -1 a 1. Acima de 90° a penalidade é máxima.
+    if diferenca_direcao > 90:
+        score_direcao = -1.0
+    else:
+        # Cosseno cria uma curva suave de penalidade.
+        score_direcao = np.cos(np.deg2rad(diferenca_direcao))
 
-    # --- 2. Cálculo do Impacto do Período (com assimetria) ---
-    # Para evitar divisão por zero ou por períodos muito pequenos da onda principal,
-    # usamos um valor mínimo de referência.
-    periodo_onda_referencia = np.maximum(previsao_onda_periodo, 1.0) # Assume mínimo de 1.0s para referência
-
-    # Calcula a razão da diferença de período (positivo se swell for mais longo, negativo se for mais curto)
-    razao_diferenca_periodo = (previsao_swell_secundario_periodo - periodo_onda_referencia) / periodo_onda_referencia
-
-    # Coeficientes para a assimetria do período:
-    # Penaliza mais fortemente períodos secundários curtos (mais negativos)
-    K_periodo_curto = 2.5 
-    # Bonifica/penaliza suavemente períodos secundários longos (mais suaves/positivos)
-    K_periodo_longo = 0.8 
-
-    fator_impacto_periodo = np.where(
-        razao_diferenca_periodo < 0,
-        K_periodo_curto * razao_diferenca_periodo,  # Torna valores negativos mais negativos (forte penalidade)
-        K_periodo_longo * razao_diferenca_periodo   # Torna valores positivos menos pronunciados (bônus suave)
-    )
-
-    # --- 3. Combinação dos Fatores e Escala pela Magnitude do Swell Secundário ---
+    # --- 2. Score do Tamanho (relação entre os swells) ---
+    # Evita divisão por zero se o swell principal for flat.
+    if previsao_onda_tamanho == 0:
+        return 0 # Sem swell principal, o secundário não tem impacto.
+        
+    ratio_tamanho = previsao_swell_secundario_tamanho / previsao_onda_tamanho
     
-    # Pesos que determinam a importância relativa de direção e período.
-    # Ajuste-os conforme o que você considera mais crítico para o impacto.
-    PESO_DIRECAO = 2.0  # Quão importante é o alinhamento da direção
-    PESO_PERIODO = 3.0  # Quão importante é a adequação do período
+    # Um swell secundário ideal tem cerca de 30-60% do tamanho do principal.
+    # Se for muito grande (>120%), começa a atrapalhar. Se for muito pequeno (<10%), é irrelevante.
+    # Usamos uma curva gaussiana centrada em 0.45 (45%).
+    score_tamanho = np.exp(-((ratio_tamanho - 0.45)**2) / (0.5**2))
+    
+    # Penaliza se o swell secundário for muito maior que o principal
+    if ratio_tamanho > 1.2:
+      score_tamanho *= -1 * (ratio_tamanho - 1.2)
 
-    # Score base antes de considerar o tamanho do swell secundário
-    # Um score positivo indica uma tendência de impacto positivo, negativo para impacto negativo.
-    score_base_combinado = (PESO_DIRECAO * fator_alinhamento_direcao) + (PESO_PERIODO * fator_impacto_periodo)
 
-    # O tamanho do swell secundário atua como um multiplicador.
-    # Se o swell for muito pequeno, o 'X_final' será próximo de zero, resultando em tanh(X) ~ 0 (impacto nulo/irrelevante).
-    # Se o swell for grande, ele amplifica o score_base_combinado, empurrando o tanh(X) para -1 ou 1.
-    X_final = score_base_combinado * previsao_swell_secundario_tamanho
+    # --- 3. Score do Período (similaridade) ---
+    if previsao_onda_periodo == 0:
+        return 0
 
-    # Calcula o score de impacto final usando a função tangente hiperbólica
-    # Ela mapeia qualquer valor real de X_final para o intervalo [-1, 1].
-    score_impacto = np.tanh(X_final)
+    ratio_periodo = previsao_swell_secundario_periodo / previsao_onda_periodo
+    # Períodos próximos são melhores. Usamos uma curva gaussiana centrada em 1.0 (períodos iguais).
+    score_periodo = np.exp(-((ratio_periodo - 1.0)**2) / (0.8**2))
 
-    score_impacto = score_impacto * 100
-    score_impacto = np.round(score_impacto, 2)
+    # --- 4. Cálculo do Impacto Final (Média Ponderada) ---
+    # A direção tem o maior peso.
+    peso_direcao = 0.60
+    peso_tamanho = 0.20
+    peso_periodo = 0.20
+    
+    # O score de direção já está entre -1 e 1. Os outros estão entre 0 e 1.
+    # Vamos normalizar o impacto final para garantir que ele fique entre -1 e 1.
+    impacto_final = (score_direcao * peso_direcao) + \
+                    (score_tamanho * peso_tamanho) + \
+                    (score_periodo * peso_periodo)
 
-    return score_impacto
+    # Garante que o resultado final esteja estritamente entre -1 e 1.
+    return np.clip(impacto_final, -1.0, 1.0)
+
+def calcular_score_onda(
+    # Parâmetros da Previsão Principal
+    previsao_tamanho,
+    previsao_direcao,
+    previsao_periodo,
+    
+    # Preferências do Usuário
+    tamanho_minimo,
+    tamanho_ideal,
+    tamanho_maximo,
+    direcao_ideal,
+    periodo_ideal,
+    
+    # Parâmetros da Previsão do Swell Secundário (opcional)
+    previsao_sec_tamanho=0,
+    previsao_sec_direcao=0,
+    previsao_sec_periodo=0
+):
+    """
+    Calcula o score final e consolidado da condição do mar para o surf.
+
+    A lógica é:
+    1. Calcula o score do tamanho da onda. Se for negativo, a condição é ruim e retornamos o score de tamanho.
+    2. Se o tamanho for bom, calcula os scores de direção e período.
+    3. Combina os três scores em um "score base" através de uma média ponderada.
+    4. Calcula o impacto do swell secundário.
+    5. Aplica o impacto como bônus (até +10%) ou penalidade (até -20%) sobre o score base.
+    """
+    
+    # Etapa 1: Calcular o score do tamanho da onda
+    score_tamanho = calcular_score_tamanho_onda(previsao_tamanho, tamanho_minimo, tamanho_ideal, tamanho_maximo)
+
+    # Etapa 2: Regra de ouro - se o tamanho não é surfável, nada mais importa.
+    if score_tamanho < 0:
+        return score_tamanho
+
+    # Etapa 3: Se o tamanho é surfável, calcular os outros scores.
+    score_direcao = calcular_score_direcao_onda(previsao_direcao, direcao_ideal)
+    score_periodo = calcular_score_periodo_onda(previsao_periodo, periodo_ideal)
+    
+    # Etapa 4: Calcular o "Score Base" com média ponderada (todos os scores estão em escala de 0-100 agora)
+    # O tamanho continua sendo o mais importante, seguido pelo período.
+    peso_tamanho = 0.50
+    peso_periodo = 0.30
+    peso_direcao = 0.20
+    
+    score_base = (score_tamanho * peso_tamanho) + \
+                 (score_periodo * peso_periodo) + \
+                 (score_direcao * peso_direcao)
+
+    # Etapa 5: Calcular e aplicar o impacto do swell secundário, se houver.
+    score_final = score_base
+    if previsao_sec_tamanho > 0 and previsao_sec_periodo > 0:
+        impacto_secundario = calcular_impacto_swell_secundario(
+            previsao_sec_tamanho, previsao_sec_periodo, previsao_sec_direcao,
+            previsao_tamanho, previsao_periodo, previsao_direcao
+        )
+        
+        modificador = 0.0
+        if impacto_secundario > 0:
+            # Bônus máximo de 10%
+            modificador = impacto_secundario * 0.10 
+        else: # impacto_secundario <= 0
+            # Penalidade máxima de 20%
+            modificador = impacto_secundario * 0.20
+
+        score_final = score_base * (1 + modificador)
+        
+    # Etapa 6: Garantir que o score final não ultrapasse 100 e arredondar.
+    return np.round(np.clip(score_final, -100, 100), 2)
