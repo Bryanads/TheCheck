@@ -20,7 +20,7 @@ class PresetCreateRequest(BaseModel):
     spot_ids: list[int]
     start_time: str
     end_time: str
-    day_offset_default: list[int] | None = None
+    weekdays: list[int] | None = None 
     is_default: bool = False
 
 class PresetUpdateRequest(BaseModel):
@@ -29,7 +29,7 @@ class PresetUpdateRequest(BaseModel):
     spot_ids: list[int] | None = None
     start_time: str | None = None
     end_time: str | None = None
-    day_offset_default: list[int] | None = None
+    weekdays: list[int] | None = None
     is_default: bool | None = None
     is_active: bool | None = None
 
@@ -41,7 +41,7 @@ async def create_preset_endpoint(request: PresetCreateRequest):
     spot_ids = data.get('spot_ids')
     start_time_str = data.get('start_time')
     end_time_str = data.get('end_time')
-    day_offset_default = data.get('day_offset_default')
+    weekdays = data.get('weekdays') 
     is_default = data.get('is_default', False)
 
     if not all([user_id, preset_name, spot_ids, start_time_str, end_time_str]):
@@ -55,16 +55,15 @@ async def create_preset_endpoint(request: PresetCreateRequest):
         spot_ids = [int(s_id) for s_id in spot_ids]
         start_time = datetime.time.fromisoformat(start_time_str)
         end_time = datetime.time.fromisoformat(end_time_str)
-        if day_offset_default is not None:
-            if not isinstance(day_offset_default, list):
-                raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
-            day_offset_default = [int(offset) for offset in day_offset_default]
+        if weekdays is not None:
+            if not isinstance(weekdays, list) or not all(isinstance(d, int) and 0 <= d <= 6 for d in weekdays):
+                raise HTTPException(status_code=400, detail="weekdays deve ser uma lista de inteiros entre 0 (Domingo) e 6 (Sábado).")
     except (ValueError, TypeError) as e:
-        raise HTTPException(status_code=400, detail=f"Erro de formato de dados. Verifique spot_ids (lista de inteiros), horários (HH:MM:SS) e day_offset_default (lista de inteiros). Erro: {e}")
+        raise HTTPException(status_code=400, detail=f"Erro de formato de dados: {e}")
 
     try:
         preset_id = await create_user_recommendation_preset(
-            user_id, preset_name, spot_ids, start_time, end_time, day_offset_default, is_default
+            user_id, preset_name, spot_ids, start_time, end_time, weekdays, is_default
         )
         return {"message": "Preset criado com sucesso!", "preset_id": preset_id}
     except Exception as e:
@@ -149,13 +148,13 @@ async def update_preset_endpoint(preset_id: int, request: PresetUpdateRequest):
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="spot_ids deve ser uma lista de IDs de spots inteiros.")
 
-    if 'day_offset_default' in data:
+    if 'weekdays' in data:
         try:
-            if not isinstance(data['day_offset_default'], list):
-                raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
-            updates['day_offset_default'] = [int(offset) for offset in data['day_offset_default']]
+            if not isinstance(data['weekdays'], list):
+                raise HTTPException(status_code=400, detail="weekdays deve ser uma lista de números inteiros.")
+            updates['weekdays'] = [int(offset) for offset in data['weekdays']]
         except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="day_offset_default deve ser uma lista de números inteiros.")
+            raise HTTPException(status_code=400, detail="weekdays deve ser uma lista de números inteiros.")
 
     # CORREÇÃO: Checar o dicionário 'data' original e usar o formato de tempo correto
     if 'start_time' in data:

@@ -334,28 +334,26 @@ async def get_level_spot_preferences(surf_level, spot_id):
 
 # --- Funções para user_recommendation_presets ---
 
-async def create_user_recommendation_preset(user_id, preset_name, spot_ids, start_time, end_time, day_offset_default=None, is_default=False):
+async def create_user_recommendation_preset(user_id, preset_name, spot_ids, start_time, end_time, weekdays=None, is_default=False):
     """
     Cria um novo preset de recomendação para um usuário.
-    day_offset_default agora aceita uma lista de inteiros. Se None, usa o padrão do DB.
+    Agora usa 'weekdays'.
     """
     conn = await get_async_db_connection()
     try:
         if is_default:
             await conn.execute("UPDATE user_recommendation_presets SET is_default = FALSE WHERE user_id = $1 AND is_default = TRUE;", str(user_id))
-        if day_offset_default is None:
-            day_offset_value = None
-        elif not isinstance(day_offset_default, list):
-            day_offset_value = [day_offset_default]
-        else:
-            day_offset_value = day_offset_default
+        
+        # Garante que weekdays seja uma lista, mesmo que vazia, se for None
+        weekdays_value = weekdays if weekdays is not None else []
+            
         preset_id = await conn.fetchval(
             """
-            INSERT INTO user_recommendation_presets (user_id, preset_name, spot_ids, start_time, end_time, day_offset_default, is_default)
+            INSERT INTO user_recommendation_presets (user_id, preset_name, spot_ids, start_time, end_time, weekdays, is_default)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING preset_id;
             """,
-            str(user_id), preset_name, spot_ids, start_time, end_time, day_offset_value, is_default
+            str(user_id), preset_name, spot_ids, start_time, end_time, weekdays_value, is_default
         )
         return preset_id
     finally:
