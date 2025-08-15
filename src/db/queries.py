@@ -312,7 +312,11 @@ async def get_spot_preferences(user_id, spot_id, preference_type='model'):
         raise ValueError("preference_type deve ser 'model' ou 'user'.")
     conn = await get_async_db_connection()
     try:
-        row = await conn.fetchrow(f"SELECT * FROM {table_name} WHERE user_id = $1 AND spot_id = $2;", str(user_id), spot_id)
+        # Adicionar condição is_active = TRUE apenas para user_spot_preferences
+        if preference_type == 'user':
+            row = await conn.fetchrow(f"SELECT * FROM {table_name} WHERE user_id = $1 AND spot_id = $2 AND is_active = TRUE;", str(user_id), spot_id)
+        else: # Para model_spot_preferences, não há is_active ou ele é sempre TRUE
+            row = await conn.fetchrow(f"SELECT * FROM {table_name} WHERE user_id = $1 AND spot_id = $2;", str(user_id), spot_id)
         return dict(row) if row else None
     finally:
         await release_async_db_connection(conn)
