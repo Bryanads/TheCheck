@@ -444,6 +444,41 @@ async def delete_user_recommendation_preset(preset_id, user_id):
     finally:
         await release_async_db_connection(conn)
 
+async def set_user_spot_preferences(user_id, spot_id, preferences: dict):
+    # ON CONFLICT lida com inserções e atualizações.
+    conn = await get_async_db_connection()
+    try:
+        # As chaves em 'preferences' devem corresponder aos nomes das colunas
+        columns = ", ".join(preferences.keys())
+        placeholders = ", ".join([f"${i+3}" for i in range(len(preferences))])
+        update_setters = ", ".join([f"{key} = EXCLUDED.{key}" for key in preferences.keys()])
+
+        query = f"""
+        INSERT INTO user_spot_preferences (user_id, spot_id, {columns})
+        VALUES ($1, $2, {placeholders})
+        ON CONFLICT (user_id, spot_id) DO UPDATE SET
+        {update_setters};
+        """
+        await conn.execute(query, str(user_id), spot_id, *preferences.values())
+    finally:
+        await release_async_db_connection(conn)
+
+async def toggle_spot_preference_active(user_id, spot_id, is_active: bool):
+    conn = await get_async_db_connection()
+    try:
+        # Atualiza a coluna 'is_active' na tabela user_spot_preferences
+        await conn.execute(
+            """
+            UPDATE user_spot_preferences
+            SET is_active = $1
+            WHERE user_id = $2 AND spot_id = $3;
+            """,
+            is_active, str(user_id), spot_id
+        )
+    finally:
+        await release_async_db_connection(conn)
+
+
 # --- Sugestão de índice para performance ---
 # Certifique-se de ter índices em:
 # - spots(spot_name)

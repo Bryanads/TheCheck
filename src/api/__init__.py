@@ -1,3 +1,4 @@
+# src/api/__init__.py
 def create_app():
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
@@ -18,12 +19,16 @@ def create_app():
     from .routes.spot_routes import router as spot_router
     from .routes.user_routes import router as user_router
     from .routes.preset_routes import router as preset_router
+    from .routes.level_spot_preferences_routes import router as level_spot_preferences_router # NOVO
+    from .routes.user_spot_preferences_routes import router as user_spot_preferences_router # NOVO
 
     app.include_router(recommendation_router)
     app.include_router(forecast_router)
     app.include_router(spot_router)
     app.include_router(user_router)
     app.include_router(preset_router)
+    app.include_router(level_spot_preferences_router) # NOVO
+    app.include_router(user_spot_preferences_router) # NOVO
 
     @app.on_event("startup")
     async def startup_event():
